@@ -44,6 +44,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         Mode::Form(form) => draw_form(f, area, form),
         Mode::Confirm(i) => draw_confirm(f, area, &app.store.hosts[*i]),
         Mode::Help => draw_help(f, area, app),
+        Mode::Lang(l) => draw_lang(f, area, *l),
         _ => {}
     }
 }
@@ -71,14 +72,13 @@ fn draw_top(f: &mut Frame, area: Rect, app: &App) {
         right.push(Span::styled(" · ", st(DIM)));
         right.push(Span::styled(tf!(t.up_n, up), st(if up > 0 { UP } else { MUTED })));
     }
-    // Language indicator doubles as a hint for the `l` switch.
-    let (on, off) = match i18n::lang() {
-        Lang::En => ("EN", "TR"),
-        Lang::Tr => ("TR", "EN"),
-    };
-    right.push(Span::styled("   ", st(DIM)));
-    right.push(Span::styled(on, st(MUTED)));
-    right.push(Span::styled(format!(" {off}"), st(DIM)));
+    // Language indicator: `l EN · TR`, the active one bright.
+    let cur = i18n::lang();
+    let lang_style = |l: Lang| if l == cur { st(TEXT).add_modifier(Modifier::BOLD) } else { st(DIM) };
+    right.push(Span::styled("    l ", st(MUTED)));
+    right.push(Span::styled("EN", lang_style(Lang::En)));
+    right.push(Span::styled(" · ", st(DIM)));
+    right.push(Span::styled("TR", lang_style(Lang::Tr)));
     f.render_widget(Paragraph::new(left), area);
     f.render_widget(Paragraph::new(Line::from(right)).right_aligned(), area);
 }
@@ -283,12 +283,13 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
         ("a", t.k_add),
         ("e", t.k_edit),
         ("c", t.k_copy),
+        ("l", t.k_lang),
         ("?", t.k_help),
         ("q", t.k_quit),
     ];
-    // Drop from the middle when narrow so ? and q always stay.
-    while hints(&shown).width() > area.width as usize && shown.len() > 3 {
-        shown.remove(shown.len() - 3);
+    // Drop from the middle when narrow so l, ? and q always stay.
+    while hints(&shown).width() > area.width as usize && shown.len() > 4 {
+        shown.remove(shown.len() - 4);
     }
     f.render_widget(Paragraph::new(hints(&shown)), area);
 }
@@ -389,6 +390,36 @@ fn draw_confirm(f: &mut Frame, area: Rect, h: &Host) {
         ]),
         Line::default(),
         hints(&[("y", t.k_delete), ("…", t.k_any)]),
+    ];
+    f.render_widget(Paragraph::new(lines), inner);
+}
+
+fn draw_lang(f: &mut Frame, area: Rect, sel: Lang) {
+    let rect = centered(area, 44, 10);
+    f.render_widget(Clear, rect);
+    let block = Block::new().style(Style::new().bg(PANEL)).padding(Padding::new(3, 3, 1, 1));
+    let inner = block.inner(rect);
+    f.render_widget(block, rect);
+    let opt = |l: Lang, label: &'static str| {
+        if l == sel {
+            Line::from(vec![
+                Span::styled(" › ", st(TEXT)),
+                Span::styled(label, st(TEXT).add_modifier(Modifier::BOLD)),
+            ])
+            .style(Style::new().bg(SEL))
+        } else {
+            Line::from(vec![Span::raw("   "), Span::styled(label, st(MUTED))])
+        }
+    };
+    // Shown before a language is chosen, so the hint is bilingual.
+    let lines = vec![
+        Line::styled("Language · Dil", st(TEXT).add_modifier(Modifier::BOLD)),
+        Line::default(),
+        opt(Lang::En, "English"),
+        opt(Lang::Tr, "Türkçe"),
+        Line::default(),
+        hints(&[("↑↓", "select / seç"), ("⏎", "OK / tamam")]),
+        Line::styled("l: change later / sonra değiştir", st(DIM)),
     ];
     f.render_widget(Paragraph::new(lines), inner);
 }

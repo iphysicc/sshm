@@ -1,4 +1,4 @@
-use crate::i18n::{self, s};
+use crate::i18n::{self, s, Lang};
 use crate::import;
 use crate::tf;
 use crate::model::{Host, Store};
@@ -27,6 +27,8 @@ pub enum Mode {
     Form(Form),
     Confirm(usize),
     Help,
+    /// Language picker; shown on first launch, value is the highlighted choice.
+    Lang(Lang),
 }
 
 pub struct App {
@@ -41,6 +43,8 @@ pub struct App {
     pub message: Option<Message>,
     pub quit: bool,
     pub pending: Option<Pending>,
+    /// Names imported on first launch; announced once the language is known.
+    pub welcome: Option<Vec<String>>,
 }
 
 impl App {
@@ -58,6 +62,7 @@ impl App {
             message: None,
             quit: false,
             pending: None,
+            welcome: None,
         }
     }
 
@@ -177,6 +182,7 @@ impl App {
             Mode::Form(f) => self.key_form(f, k),
             Mode::Confirm(i) => self.key_confirm(i, k),
             Mode::Help => Mode::Normal,
+            Mode::Lang(l) => self.key_lang(l, k),
         };
     }
 
@@ -265,14 +271,42 @@ impl App {
             }
             KeyCode::Char('i') => self.import(),
             KeyCode::Char('l') => {
-                let l = i18n::lang().toggle();
-                i18n::set(l);
-                self.store.lang = Some(l.code().to_string());
-                self.save();
+                self.set_lang(i18n::lang().toggle());
                 self.info(s().lang_switched);
             }
             KeyCode::Char('?') => self.mode = Mode::Help,
             _ => {}
+        }
+    }
+
+    pub fn set_lang(&mut self, l: Lang) {
+        i18n::set(l);
+        self.store.lang = Some(l.code().to_string());
+        self.save();
+    }
+
+    pub fn show_welcome(&mut self) {
+        if let Some(names) = self.welcome.take() {
+            if !names.is_empty() {
+                self.info(tf!(s().welcome, names.len(), names.join(", ")));
+            }
+        }
+    }
+
+    fn key_lang(&mut self, l: Lang, k: KeyEvent) -> Mode {
+        match k.code {
+            KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right | KeyCode::Tab | KeyCode::BackTab
+            | KeyCode::Char('j') | KeyCode::Char('k') => Mode::Lang(l.toggle()),
+            KeyCode::Char('e') => Mode::Lang(Lang::En),
+            KeyCode::Char('t') => Mode::Lang(Lang::Tr),
+            KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Esc => {
+                // Esc keeps the current language but still saves it, so we don't ask again.
+                let chosen = if k.code == KeyCode::Esc { i18n::lang() } else { l };
+                self.set_lang(chosen);
+                self.show_welcome();
+                Mode::Normal
+            }
+            _ => Mode::Lang(l),
         }
     }
 
@@ -577,6 +611,9 @@ mod tests {
         }
     }
 
+    // The UI language is global; tests that read or change it run one at a time.
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     fn app() -> App {
         let dir = std::env::temp_dir().join(format!("sshm-test-{}", std::process::id()));
         App::new(Store::default(), dir.join("hosts.toml"))
@@ -584,6 +621,7 @@ mod tests {
 
     #[test]
     fn add_filter_edit_delete() {
+        let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut a = app();
         key(&mut a, KeyCode::Char('a'));
         key(&mut a, KeyCode::Enter); // empty name
@@ -637,6 +675,7 @@ mod tests {
 
     #[test]
     fn utf8_editing() {
+        let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut a = app();
         key(&mut a, KeyCode::Char('a'));
         typ(&mut a, "çğü");
@@ -646,5 +685,25 @@ mod tests {
             Mode::Form(f) => assert_eq!(f.fields[F_NAME].value, "çü"),
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn language_picker() {
+        let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let mut a = app();
+        a.welcome = Some(vec!["web".into()]);
+        a.mode = Mode::Lang(Lang::En);
+        key(&mut a, KeyCode::Down);
+        assert!(matches!(a.mode, Mode::Lang(Lang::Tr)));
+        key(&mut a, KeyCode::Enter);
+        assert!(matches!(a.mode, Mode::Normal));
+        assert_eq!(i18n::lang(), Lang::Tr);
+        assert_eq!(a.store.lang.as_deref(), Some("tr"));
+        assert!(a.message.as_ref().unwrap().text.contains("içe aktarıldı"));
+        // `l` toggles back
+        key(&mut a, KeyCode::Char('l'));
+        assert_eq!(i18n::lang(), Lang::En);
+        assert_eq!(a.store.lang.as_deref(), Some("en"));
+        let _ = std::fs::remove_dir_all(a.path.parent().unwrap());
     }
 }

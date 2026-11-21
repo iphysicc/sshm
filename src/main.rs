@@ -29,7 +29,7 @@ fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let path = config_path();
     apply_lang(None);
-    let mut first_run_msg = None;
+    let mut first_run_names = None;
     let mut store = match Store::load(&path)? {
         Some(st) => {
             apply_lang(Some(&st));
@@ -40,15 +40,13 @@ fn main() -> Result<()> {
             let mut st = Store::default();
             let added = import::merge(&mut st, import::discover());
             st.save(&path)?;
-            if !added.is_empty() {
-                first_run_msg = Some(tf!(s().welcome, added.len(), added.join(", ")));
-            }
+            first_run_names = Some(added);
             st
         }
     };
 
     match args.first().map(String::as_str) {
-        None => run_tui(store, path, first_run_msg),
+        None => run_tui(store, path, first_run_names),
         Some("-h" | "--help" | "help") => {
             print!("{}", s().cli_help);
             Ok(())
@@ -115,12 +113,17 @@ fn connect_cli(mut store: Store, path: &Path, q: &str) -> Result<()> {
     std::process::exit(status.code().unwrap_or(1));
 }
 
-fn run_tui(store: Store, path: PathBuf, first_msg: Option<String>) -> Result<()> {
+fn run_tui(store: Store, path: PathBuf, first_run: Option<Vec<String>>) -> Result<()> {
     let mut terminal = ratatui::init();
     let _ = execute!(stdout(), EnableBracketedPaste, SetTitle("sshm"));
+    // Ask for a language until one is saved, unless SSHM_LANG decides it.
+    let ask_lang = store.lang.is_none() && std::env::var_os("SSHM_LANG").is_none();
     let mut app = App::new(store, path);
-    if let Some(m) = first_msg {
-        app.info(m);
+    app.welcome = first_run;
+    if ask_lang {
+        app.mode = app::Mode::Lang(i18n::lang());
+    } else {
+        app.show_welcome();
     }
     app.probe_all();
 

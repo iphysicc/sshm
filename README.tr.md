@@ -44,8 +44,10 @@ sshm --config      kayıt dosyasının yolunu yaz
 
 ## Dil
 
-Arayüz İngilizce ve Türkçe kullanılabilir, varsayılan İngilizce. Arayüzde `l`'ye bas ya da
-`sshm --lang tr` çalıştır; seçim kaydedilir. `SSHM_LANG=tr` yalnız o çalıştırma için geçerlidir.
+Arayüz İngilizce ve Türkçe kullanılabilir, varsayılan İngilizce. İlk açılışta sshm hangi
+dili istediğini sorar. Sonrasında alt barda ve üst barda dil değiştirme tuşu `l` her zaman
+görünür; basınca dil değişir. `sshm --lang tr` ile de ayarlanabilir. Seçim kaydedilir.
+`SSHM_LANG=tr` yalnız o çalıştırma için geçerlidir.
 
 ## Sunucuda kalıcı oturum
 

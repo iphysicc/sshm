@@ -44,9 +44,10 @@ sshm --config      print the path of the connections file
 
 ## Language
 
-The interface is available in English and Turkish. English is the default.
-Press `l` in the interface or run `sshm --lang tr` to switch; the choice is saved.
-`SSHM_LANG=tr` overrides it for a single run.
+The interface is available in English and Turkish, with English as the default. On first
+launch sshm asks which one you want. After that, the footer and the top bar always show
+`l` as the language switch; press it to toggle, or run `sshm --lang tr`. The choice is
+saved. `SSHM_LANG=tr` overrides it for a single run.
 
 ## Persistent sessions on the server
 
