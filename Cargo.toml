@@ -1,0 +1,19 @@
+[package]
+name = "sshm"
+version = "0.1.0"
+edition = "2024"
+description = "Terminal SSH bağlantı yöneticisi (ratatui + sistem OpenSSH)"
+license = "MIT"
+repository = "https://github.com/iphysicc/sshm"
+readme = "README.md"
+keywords = ["ssh", "tui", "ratatui", "terminal"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+anyhow = "1.0.104"
+arboard = { version = "3.7.0", default-features = false }
+crossterm = "0.29"
+dirs = "7.0.0"
+ratatui = "0.30.2"
+serde = { version = "1.0.229", features = ["derive"] }
+toml = "1.2.2"
