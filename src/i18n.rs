@@ -134,6 +134,7 @@ pub struct Strings {
     pub imported_from: &'static str,
     // ssh
     pub exe_not_found: &'static str,
+    #[cfg_attr(not(windows), allow(dead_code))]
     pub window_failed: &'static str,
     #[cfg_attr(windows, allow(dead_code))]
     pub tab_unsupported: &'static str,
