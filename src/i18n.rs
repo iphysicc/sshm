@@ -41,7 +41,11 @@ pub fn set(l: Lang) {
 }
 
 pub fn lang() -> Lang {
-    if LANG.load(Ordering::Relaxed) == 1 { Lang::Tr } else { Lang::En }
+    if LANG.load(Ordering::Relaxed) == 1 {
+        Lang::Tr
+    } else {
+        Lang::En
+    }
 }
 
 pub fn s() -> &'static Strings {
@@ -77,7 +81,13 @@ macro_rules! tf {
 
 pub fn ago(secs: u64) -> String {
     let (n, unit) = match secs {
-        0..=59 => return if lang() == Lang::Tr { "az önce".into() } else { "just now".into() },
+        0..=59 => {
+            return if lang() == Lang::Tr {
+                "az önce".into()
+            } else {
+                "just now".into()
+            };
+        }
         60..=3599 => (secs / 60, 0),
         3600..=86399 => (secs / 3600, 1),
         _ => (secs / 86400, 2),
@@ -94,7 +104,11 @@ pub fn ago(secs: u64) -> String {
 
 pub fn duration(d: Duration) -> String {
     let s = d.as_secs();
-    let (sec, min, hr) = if lang() == Lang::Tr { ("sn", "dk", "sa") } else { ("s", "min", "h") };
+    let (sec, min, hr) = if lang() == Lang::Tr {
+        ("sn", "dk", "sa")
+    } else {
+        ("s", "min", "h")
+    };
     match s {
         0..=59 => format!("{s} {sec}"),
         60..=3599 => format!("{} {min}", s / 60),
@@ -271,7 +285,10 @@ pub static EN: Strings = Strings {
     f_key: ("Key", r"C:\path\key.pem (empty = ssh default)"),
     f_group: ("Group", "Oracle, AWS, Home…"),
     f_jump: ("Jump", "user@bastion (ProxyJump)"),
-    f_tmux: ("tmux", "session name, e.g. main (tmux must be installed on the server)"),
+    f_tmux: (
+        "tmux",
+        "session name, e.g. main (tmux must be installed on the server)",
+    ),
     f_fwd: ("Forwards", "L 8080:localhost:80, D 1080"),
     f_extra: ("Extra args", "-A -o Compression=yes"),
     f_notes: ("Notes", ""),
@@ -332,11 +349,17 @@ pub static EN: Strings = Strings {
     confirm_post: "?",
     help_title: "Shortcuts",
     help: &[
-        ("⏎", "connect here; you return to the list when the session ends"),
+        (
+            "⏎",
+            "connect here; you return to the list when the session ends",
+        ),
         ("t", "connect in a new Windows Terminal tab"),
         ("f", "open an sftp session"),
         ("c", "copy the ssh command to the clipboard"),
-        ("/", "search (name, address, group, notes); ⏎ connects on a single match"),
+        (
+            "/",
+            "search (name, address, group, notes); ⏎ connects on a single match",
+        ),
         ("a  e  y", "add · edit · duplicate"),
         ("d", "delete"),
         ("r", "check servers again"),
@@ -356,6 +379,7 @@ Usage:
   sshm --import      import from .bat files and ~/.ssh/config
   sshm --lang en|tr  set the interface language
   sshm --config      print the path of the connections file
+  sshm --version     print the version
 ",
     not_found: "'{}' not found. Connections:",
     cli_import_none: "No new connections found.",
@@ -493,6 +517,7 @@ Kullanım:
   sshm --import      .bat dosyalarından ve ~/.ssh/config'ten içe aktar
   sshm --lang en|tr  arayüz dilini ayarla
   sshm --config      kayıt dosyasının yolunu yaz
+  sshm --version     sürümü yaz
 ",
     not_found: "'{}' bulunamadı. Bağlantılar:",
     cli_import_none: "Yeni bağlantı bulunamadı.",

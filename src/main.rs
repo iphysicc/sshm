@@ -10,18 +10,22 @@ use anyhow::Result;
 use app::{App, Pending};
 use crossterm::event::{self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyEventKind};
 use crossterm::execute;
-use crossterm::terminal::{enable_raw_mode, EnterAlternateScreen, SetTitle};
-use i18n::{s, Lang};
-use model::{config_path, Store};
+use crossterm::terminal::{EnterAlternateScreen, SetTitle, enable_raw_mode};
+use i18n::{Lang, s};
+use model::{Store, config_path};
 use ratatui::DefaultTerminal;
-use std::io::{stdout, Write};
+use std::io::{Write, stdout};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 /// SSHM_LANG (for this run) > saved setting > English.
 fn apply_lang(store: Option<&Store>) {
-    let env = std::env::var("SSHM_LANG").ok().and_then(|v| Lang::parse(&v));
-    let saved = store.and_then(|st| st.lang.as_deref()).and_then(Lang::parse);
+    let env = std::env::var("SSHM_LANG")
+        .ok()
+        .and_then(|v| Lang::parse(&v));
+    let saved = store
+        .and_then(|st| st.lang.as_deref())
+        .and_then(Lang::parse);
     i18n::set(env.or(saved).unwrap_or(Lang::En));
 }
 
@@ -47,6 +51,10 @@ fn main() -> Result<()> {
 
     match args.first().map(String::as_str) {
         None => run_tui(store, path, first_run_names),
+        Some("-V" | "--version") => {
+            println!("sshm {}", env!("CARGO_PKG_VERSION"));
+            Ok(())
+        }
         Some("-h" | "--help" | "help") => {
             print!("{}", s().cli_help);
             Ok(())
@@ -87,10 +95,24 @@ fn main() -> Result<()> {
 
 fn list(store: &Store) {
     let mut hosts: Vec<_> = store.hosts.iter().collect();
-    hosts.sort_by_key(|h| (h.group.is_empty(), h.group.to_lowercase(), h.name.to_lowercase()));
-    let w = hosts.iter().map(|h| h.name.chars().count()).max().unwrap_or(0);
+    hosts.sort_by_key(|h| {
+        (
+            h.group.is_empty(),
+            h.group.to_lowercase(),
+            h.name.to_lowercase(),
+        )
+    });
+    let w = hosts
+        .iter()
+        .map(|h| h.name.chars().count())
+        .max()
+        .unwrap_or(0);
     for h in hosts {
-        let g = if h.group.is_empty() { String::new() } else { format!("  [{}]", h.group) };
+        let g = if h.group.is_empty() {
+            String::new()
+        } else {
+            format!("  [{}]", h.group)
+        };
         println!("{:<w$}  {}{}", h.name, h.target(), g);
     }
 }
@@ -164,12 +186,21 @@ fn run_external(terminal: &mut DefaultTerminal, app: &mut App, p: Pending) -> Re
         Pending::Sftp(i) => (i, true),
     };
     let h = app.store.hosts[i].clone();
-    let mut cmd = if sftp { ssh::sftp_command(&h) } else { ssh::ssh_command(&h) };
+    let mut cmd = if sftp {
+        ssh::sftp_command(&h)
+    } else {
+        ssh::ssh_command(&h)
+    };
 
     let _ = execute!(stdout(), DisableBracketedPaste);
     ratatui::restore();
     let _ = execute!(stdout(), SetTitle(format!("{} · sshm", h.name)));
-    println!("\n→ {} {} ({})\n", if sftp { "sftp" } else { "ssh" }, h.name, h.target());
+    println!(
+        "\n→ {} {} ({})\n",
+        if sftp { "sftp" } else { "ssh" },
+        h.name,
+        h.target()
+    );
 
     let t0 = Instant::now();
     let res = cmd.status();
@@ -195,7 +226,12 @@ fn run_external(terminal: &mut DefaultTerminal, app: &mut App, p: Pending) -> Re
     }
 
     enable_raw_mode()?;
-    execute!(stdout(), EnterAlternateScreen, EnableBracketedPaste, SetTitle("sshm"))?;
+    execute!(
+        stdout(),
+        EnterAlternateScreen,
+        EnableBracketedPaste,
+        SetTitle("sshm")
+    )?;
     terminal.clear()?;
 
     let dur = i18n::duration(took);

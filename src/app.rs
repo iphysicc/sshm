@@ -1,9 +1,9 @@
-use crate::i18n::{self, s, Lang};
+use crate::i18n::{self, Lang, s};
 use crate::import;
-use crate::tf;
 use crate::model::{Host, Store};
 use crate::probe::{self, Status};
 use crate::ssh;
+use crate::tf;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -67,21 +67,29 @@ impl App {
     }
 
     pub fn info(&mut self, text: impl Into<String>) {
-        self.message = Some(Message { text: text.into(), error: false, at: Instant::now() });
+        self.message = Some(Message {
+            text: text.into(),
+            error: false,
+            at: Instant::now(),
+        });
     }
 
     pub fn error(&mut self, text: impl Into<String>) {
-        self.message = Some(Message { text: text.into(), error: true, at: Instant::now() });
+        self.message = Some(Message {
+            text: text.into(),
+            error: true,
+            at: Instant::now(),
+        });
     }
 
     pub fn tick(&mut self) {
         while let Ok((k, s)) = self.rx.try_recv() {
             self.status.insert(k, s);
         }
-        if let Some(m) = &self.message {
-            if m.at.elapsed() > Duration::from_secs(6) {
-                self.message = None;
-            }
+        if let Some(m) = &self.message
+            && m.at.elapsed() > Duration::from_secs(6)
+        {
+            self.message = None;
         }
     }
 
@@ -117,19 +125,40 @@ impl App {
 
     /// Indices of filtered entries, sorted by group then name.
     pub fn visible(&self) -> Vec<usize> {
-        let terms: Vec<String> = self.filter.to_lowercase().split_whitespace().map(String::from).collect();
+        let terms: Vec<String> = self
+            .filter
+            .to_lowercase()
+            .split_whitespace()
+            .map(String::from)
+            .collect();
         let hosts = &self.store.hosts;
         let mut v: Vec<usize> = (0..hosts.len())
             .filter(|&i| {
                 let h = &hosts[i];
-                let hay = format!("{} {} {} {} {}", h.name, h.target(), h.group, h.notes, h.jump).to_lowercase();
+                let hay = format!(
+                    "{} {} {} {} {}",
+                    h.name,
+                    h.target(),
+                    h.group,
+                    h.notes,
+                    h.jump
+                )
+                .to_lowercase();
                 terms.iter().all(|t| hay.contains(t))
             })
             .collect();
         v.sort_by(|&a, &b| {
             let (ha, hb) = (&hosts[a], &hosts[b]);
-            (ha.group.is_empty(), ha.group.to_lowercase(), ha.name.to_lowercase())
-                .cmp(&(hb.group.is_empty(), hb.group.to_lowercase(), hb.name.to_lowercase()))
+            (
+                ha.group.is_empty(),
+                ha.group.to_lowercase(),
+                ha.name.to_lowercase(),
+            )
+                .cmp(&(
+                    hb.group.is_empty(),
+                    hb.group.to_lowercase(),
+                    hb.name.to_lowercase(),
+                ))
         });
         v
     }
@@ -253,7 +282,9 @@ impl App {
             KeyCode::Char('y') => {
                 if let Some(i) = self.current() {
                     let mut h = self.store.hosts[i].clone();
-                    h.name = self.store.unique_name(&format!("{}-{}", h.name, s().copy_suffix));
+                    h.name = self
+                        .store
+                        .unique_name(&format!("{}-{}", h.name, s().copy_suffix));
                     h.last_used = None;
                     h.uses = 0;
                     self.mode = Mode::Form(Form::new(s().form_copy, None, &h));
@@ -286,22 +317,32 @@ impl App {
     }
 
     pub fn show_welcome(&mut self) {
-        if let Some(names) = self.welcome.take() {
-            if !names.is_empty() {
-                self.info(tf!(s().welcome, names.len(), names.join(", ")));
-            }
+        if let Some(names) = self.welcome.take()
+            && !names.is_empty()
+        {
+            self.info(tf!(s().welcome, names.len(), names.join(", ")));
         }
     }
 
     fn key_lang(&mut self, l: Lang, k: KeyEvent) -> Mode {
         match k.code {
-            KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right | KeyCode::Tab | KeyCode::BackTab
-            | KeyCode::Char('j') | KeyCode::Char('k') => Mode::Lang(l.toggle()),
+            KeyCode::Up
+            | KeyCode::Down
+            | KeyCode::Left
+            | KeyCode::Right
+            | KeyCode::Tab
+            | KeyCode::BackTab
+            | KeyCode::Char('j')
+            | KeyCode::Char('k') => Mode::Lang(l.toggle()),
             KeyCode::Char('e') => Mode::Lang(Lang::En),
             KeyCode::Char('t') => Mode::Lang(Lang::Tr),
             KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Esc => {
                 // Esc keeps the current language but still saves it, so we don't ask again.
-                let chosen = if k.code == KeyCode::Esc { i18n::lang() } else { l };
+                let chosen = if k.code == KeyCode::Esc {
+                    i18n::lang()
+                } else {
+                    l
+                };
                 self.set_lang(chosen);
                 self.show_welcome();
                 Mode::Normal
@@ -368,7 +409,14 @@ impl App {
     }
 
     fn key_confirm(&mut self, i: usize, k: KeyEvent) -> Mode {
-        if matches!(k.code, KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Char('e') | KeyCode::Char('E') | KeyCode::Enter) {
+        if matches!(
+            k.code,
+            KeyCode::Char('y')
+                | KeyCode::Char('Y')
+                | KeyCode::Char('e')
+                | KeyCode::Char('E')
+                | KeyCode::Enter
+        ) {
             let h = self.store.hosts.remove(i);
             self.save();
             self.clamp();
@@ -383,8 +431,12 @@ impl App {
             KeyCode::Esc => return Mode::Normal,
             KeyCode::Char('s') if ctrl => return self.submit(f),
             KeyCode::Enter if f.focus + 1 == f.fields.len() => return self.submit(f),
-            KeyCode::Enter | KeyCode::Tab | KeyCode::Down => f.focus = (f.focus + 1) % f.fields.len(),
-            KeyCode::BackTab | KeyCode::Up => f.focus = (f.focus + f.fields.len() - 1) % f.fields.len(),
+            KeyCode::Enter | KeyCode::Tab | KeyCode::Down => {
+                f.focus = (f.focus + 1) % f.fields.len()
+            }
+            KeyCode::BackTab | KeyCode::Up => {
+                f.focus = (f.focus + f.fields.len() - 1) % f.fields.len()
+            }
             KeyCode::Left => f.field().left(),
             KeyCode::Right => f.field().right(),
             KeyCode::Home => f.field().cursor = 0,
@@ -445,11 +497,20 @@ pub struct Field {
 impl Field {
     fn new((label, hint): (&'static str, &'static str), value: String) -> Field {
         let cursor = value.chars().count();
-        Field { label, hint, value, cursor }
+        Field {
+            label,
+            hint,
+            value,
+            cursor,
+        }
     }
 
     fn byte_at(&self, ci: usize) -> usize {
-        self.value.char_indices().nth(ci).map(|(b, _)| b).unwrap_or(self.value.len())
+        self.value
+            .char_indices()
+            .nth(ci)
+            .map(|(b, _)| b)
+            .unwrap_or(self.value.len())
     }
 
     fn left(&mut self) {
@@ -507,7 +568,14 @@ impl Form {
             Field::new(t.f_name, h.name.clone()),
             Field::new(t.f_host, h.host.clone()),
             Field::new(t.f_user, h.user.clone()),
-            Field::new(t.f_port, if h.port == 22 { String::new() } else { h.port.to_string() }),
+            Field::new(
+                t.f_port,
+                if h.port == 22 {
+                    String::new()
+                } else {
+                    h.port.to_string()
+                },
+            ),
             Field::new(t.f_key, h.key.clone()),
             Field::new(t.f_group, h.group.clone()),
             Field::new(t.f_jump, h.jump.clone()),
@@ -516,7 +584,13 @@ impl Form {
             Field::new(t.f_extra, h.extra.clone()),
             Field::new(t.f_notes, h.notes.clone()),
         ];
-        Form { title: title.to_string(), editing, fields, focus: 0, error: None }
+        Form {
+            title: title.to_string(),
+            editing,
+            fields,
+            focus: 0,
+            error: None,
+        }
     }
 
     pub fn field(&mut self) -> &mut Field {
@@ -569,7 +643,10 @@ impl Form {
             return Err(tf!(t.e_key, key));
         }
         let tmux = self.v(F_TMUX);
-        if !tmux.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) {
+        if !tmux
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
+        {
             return Err(t.e_tmux.into());
         }
         let forwards: Vec<String> = self
@@ -655,7 +732,11 @@ mod tests {
         assert_eq!(a.visible().len(), 2);
 
         // edit: renaming to an existing name is rejected
-        a.selected = a.visible().iter().position(|&i| a.store.hosts[i].name != "web").unwrap();
+        a.selected = a
+            .visible()
+            .iter()
+            .position(|&i| a.store.hosts[i].name != "web")
+            .unwrap();
         key(&mut a, KeyCode::Char('e'));
         a.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
         typ(&mut a, "WEB");

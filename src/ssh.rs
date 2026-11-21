@@ -12,7 +12,10 @@ fn system_bin(name: &str) -> PathBuf {
     #[cfg(windows)]
     {
         let root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
-        let p = PathBuf::from(root).join("System32").join("OpenSSH").join(format!("{name}.exe"));
+        let p = PathBuf::from(root)
+            .join("System32")
+            .join("OpenSSH")
+            .join(format!("{name}.exe"));
         if p.exists() {
             return p;
         }
@@ -30,10 +33,10 @@ pub fn sftp_bin() -> PathBuf {
 
 pub fn expand_tilde(s: &str) -> String {
     let s = s.trim().trim_matches('"');
-    if let Some(rest) = s.strip_prefix("~/").or_else(|| s.strip_prefix("~\\")) {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(rest).display().to_string();
-        }
+    if let Some(rest) = s.strip_prefix("~/").or_else(|| s.strip_prefix("~\\"))
+        && let Some(home) = dirs::home_dir()
+    {
+        return home.join(rest).display().to_string();
     }
     s.to_string()
 }
@@ -63,7 +66,12 @@ pub fn forward_arg(f: &str) -> Option<(&'static str, String)> {
     Some(("-L", f.to_string()))
 }
 
-const KEEPALIVE: [&str; 4] = ["-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=3"];
+const KEEPALIVE: [&str; 4] = [
+    "-o",
+    "ServerAliveInterval=30",
+    "-o",
+    "ServerAliveCountMax=3",
+];
 
 fn base_args(h: &Host, keepalive: bool) -> Vec<String> {
     let mut a: Vec<String> = Vec::new();
@@ -182,7 +190,7 @@ pub fn open_tab(h: &Host) -> Result<()> {
     }
     #[cfg(not(windows))]
     {
-        let _ = (exe, Stdio::null());
+        let _ = (exe, h, Stdio::null());
         anyhow::bail!(s().tab_unsupported)
     }
 }

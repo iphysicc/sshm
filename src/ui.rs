@@ -1,14 +1,14 @@
 use crate::app::{App, Form, Mode};
-use crate::i18n::{self, s, Lang};
-use crate::model::{now, Host};
+use crate::i18n::{self, Lang, s};
+use crate::model::{Host, now};
 use crate::probe::Status;
 use crate::ssh;
 use crate::tf;
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Margin, Position, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, List, ListItem, ListState, Padding, Paragraph, Wrap};
-use ratatui::Frame;
 
 // Achromatic surfaces; color is used only for status.
 const BG: Color = Color::Rgb(17, 17, 17);
@@ -65,16 +65,28 @@ fn draw_top(f: &mut Frame, area: Rect, app: &App) {
     let mut right = vec![];
     if !app.filter.is_empty() {
         right.push(Span::styled(format!("/{}  ", app.filter), st(MUTED)));
-        right.push(Span::styled(format!("{} · ", tf!(t.matches, app.visible().len())), st(DIM)));
+        right.push(Span::styled(
+            format!("{} · ", tf!(t.matches, app.visible().len())),
+            st(DIM),
+        ));
     }
     right.push(Span::styled(tf!(t.servers, total), st(MUTED)));
     if total > 0 {
         right.push(Span::styled(" · ", st(DIM)));
-        right.push(Span::styled(tf!(t.up_n, up), st(if up > 0 { UP } else { MUTED })));
+        right.push(Span::styled(
+            tf!(t.up_n, up),
+            st(if up > 0 { UP } else { MUTED }),
+        ));
     }
     // Language indicator: `l EN · TR`, the active one bright.
     let cur = i18n::lang();
-    let lang_style = |l: Lang| if l == cur { st(TEXT).add_modifier(Modifier::BOLD) } else { st(DIM) };
+    let lang_style = |l: Lang| {
+        if l == cur {
+            st(TEXT).add_modifier(Modifier::BOLD)
+        } else {
+            st(DIM)
+        }
+    };
     right.push(Span::styled("    l ", st(MUTED)));
     right.push(Span::styled("EN", lang_style(Lang::En)));
     right.push(Span::styled(" · ", st(DIM)));
@@ -86,8 +98,9 @@ fn draw_top(f: &mut Frame, area: Rect, app: &App) {
 fn draw_body(f: &mut Frame, area: Rect, app: &App) {
     if area.width >= 78 {
         let list_w = (area.width * 2 / 5).clamp(30, 46);
-        let [list, details] =
-            Layout::horizontal([Constraint::Length(list_w), Constraint::Fill(1)]).spacing(1).areas(area);
+        let [list, details] = Layout::horizontal([Constraint::Length(list_w), Constraint::Fill(1)])
+            .spacing(1)
+            .areas(area);
         draw_list(f, list, app);
         draw_details(f, details.inner(Margin::new(1, 0)), app);
     } else {
@@ -107,7 +120,11 @@ fn status_cell(status: Option<&Status>) -> (&'static str, Color, String) {
 }
 
 fn group_label(h: &Host) -> &str {
-    if h.group.is_empty() { s().other_group } else { h.group.as_str() }
+    if h.group.is_empty() {
+        s().other_group
+    } else {
+        h.group.as_str()
+    }
 }
 
 fn draw_list(f: &mut Frame, area: Rect, app: &App) {
@@ -119,11 +136,20 @@ fn draw_list(f: &mut Frame, area: Rect, app: &App) {
             vec![
                 Line::styled(t.empty_title, st(TEXT)),
                 Line::default(),
-                Line::from(vec![Span::styled("a", st(TEXT)), Span::styled(format!("  {}", t.empty_add), st(MUTED))]),
-                Line::from(vec![Span::styled("i", st(TEXT)), Span::styled(format!("  {}", t.empty_import), st(MUTED))]),
+                Line::from(vec![
+                    Span::styled("a", st(TEXT)),
+                    Span::styled(format!("  {}", t.empty_add), st(MUTED)),
+                ]),
+                Line::from(vec![
+                    Span::styled("i", st(TEXT)),
+                    Span::styled(format!("  {}", t.empty_import), st(MUTED)),
+                ]),
             ]
         } else {
-            vec![Line::styled(t.no_match, st(TEXT)), Line::styled(t.no_match_hint, st(MUTED))]
+            vec![
+                Line::styled(t.no_match, st(TEXT)),
+                Line::styled(t.no_match_hint, st(MUTED)),
+            ]
         };
         f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
         return;
@@ -140,7 +166,10 @@ fn draw_list(f: &mut Frame, area: Rect, app: &App) {
             if last_group.is_some() {
                 items.push(ListItem::new(Line::default()));
             }
-            let count = vis.iter().filter(|&&j| group_label(&app.store.hosts[j]) == g).count();
+            let count = vis
+                .iter()
+                .filter(|&&j| group_label(&app.store.hosts[j]) == g)
+                .count();
             items.push(ListItem::new(Line::from(vec![
                 Span::styled(g.clone(), st(MUTED).add_modifier(Modifier::BOLD)),
                 Span::styled(format!("  {count}"), st(DIM)),
@@ -170,17 +199,19 @@ fn draw_list(f: &mut Frame, area: Rect, app: &App) {
 }
 
 fn short_path(p: &str) -> String {
-    if let Some(home) = dirs::home_dir() {
-        if let Some(rest) = p.strip_prefix(&home.display().to_string()) {
-            return format!("~{rest}");
-        }
+    if let Some(home) = dirs::home_dir()
+        && let Some(rest) = p.strip_prefix(&home.display().to_string())
+    {
+        return format!("~{rest}");
     }
     p.to_string()
 }
 
 fn draw_details(f: &mut Frame, area: Rect, app: &App) {
     let t = s();
-    let block = Block::new().style(Style::new().bg(PANEL)).padding(Padding::new(2, 2, 1, 1));
+    let block = Block::new()
+        .style(Style::new().bg(PANEL))
+        .padding(Padding::new(2, 2, 1, 1));
     let inner = block.inner(area);
     f.render_widget(block, area);
     let Some(i) = app.current() else { return };
@@ -204,15 +235,24 @@ fn draw_details(f: &mut Frame, area: Rect, app: &App) {
         None => vec![Span::styled(t.st_unchecked, st(MUTED))],
         Some(Status::Checking) => vec![Span::styled(t.st_checking, st(MUTED))],
         Some(Status::Up { ms, .. }) => {
-            vec![Span::styled(t.st_up, st(UP)), Span::styled(format!(" · {ms} ms"), st(MUTED))]
+            vec![
+                Span::styled(t.st_up, st(UP)),
+                Span::styled(format!(" · {ms} ms"), st(MUTED)),
+            ]
         }
         Some(Status::Down(why)) => {
-            vec![Span::styled(t.st_down, st(DOWN)), Span::styled(format!(" · {}", why.text()), st(MUTED))]
+            vec![
+                Span::styled(t.st_down, st(DOWN)),
+                Span::styled(format!(" · {}", why.text()), st(MUTED)),
+            ]
         }
         Some(Status::Skipped) => vec![Span::styled(t.st_skipped, st(MUTED))],
     };
     lines.push(row(t.r_status, state));
-    if let Some(Status::Up { banner: Some(b), .. }) = status {
+    if let Some(Status::Up {
+        banner: Some(b), ..
+    }) = status
+    {
         lines.push(row(t.r_version, vec![Span::styled(b.clone(), st(MUTED))]));
     }
     lines.push(row(t.r_port, txt(h.port.to_string())));
@@ -232,7 +272,11 @@ fn draw_details(f: &mut Frame, area: Rect, app: &App) {
         lines.push(row(t.r_extra, txt(h.extra.clone())));
     }
     let last = match h.last_used {
-        Some(ts) => format!("{} · {}", i18n::ago(now().saturating_sub(ts)), i18n::times(h.uses)),
+        Some(ts) => format!(
+            "{} · {}",
+            i18n::ago(now().saturating_sub(ts)),
+            i18n::times(h.uses)
+        ),
         None => t.never_used.into(),
     };
     lines.push(row(t.r_last, vec![Span::styled(last, st(MUTED))]));
@@ -243,10 +287,14 @@ fn draw_details(f: &mut Frame, area: Rect, app: &App) {
 
     let cmd = ssh::command_line(h, false);
     let cmd_h = ((cmd.chars().count() as u16) / inner.width.max(1) + 1).min(4);
-    let [top, cmd_area] =
-        Layout::vertical([Constraint::Fill(1), Constraint::Length(cmd_h)]).spacing(1).areas(inner);
+    let [top, cmd_area] = Layout::vertical([Constraint::Fill(1), Constraint::Length(cmd_h)])
+        .spacing(1)
+        .areas(inner);
     f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), top);
-    f.render_widget(Paragraph::new(Line::styled(cmd, st(DIM))).wrap(Wrap { trim: false }), cmd_area);
+    f.render_widget(
+        Paragraph::new(Line::styled(cmd, st(DIM))).wrap(Wrap { trim: false }),
+        cmd_area,
+    );
 }
 
 fn hints(pairs: &[(&str, &str)]) -> Line<'static> {
@@ -264,15 +312,27 @@ fn hints(pairs: &[(&str, &str)]) -> Line<'static> {
 fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
     let t = s();
     if let Mode::Filter = app.mode {
-        let line = Line::from(vec![Span::styled("/", st(MUTED)), Span::styled(app.filter.clone(), st(TEXT))]);
+        let line = Line::from(vec![
+            Span::styled("/", st(MUTED)),
+            Span::styled(app.filter.clone(), st(TEXT)),
+        ]);
         f.render_widget(Paragraph::new(line), area);
         let x = area.x + 1 + Span::raw(app.filter.clone()).width() as u16;
         f.set_cursor_position(Position::new(x.min(area.right().saturating_sub(1)), area.y));
-        f.render_widget(Paragraph::new(hints(&[("⏎", t.k_ok), ("Esc", t.k_clear)])).right_aligned(), area);
+        f.render_widget(
+            Paragraph::new(hints(&[("⏎", t.k_ok), ("Esc", t.k_clear)])).right_aligned(),
+            area,
+        );
         return;
     }
     if let Some(m) = &app.message {
-        f.render_widget(Paragraph::new(Line::styled(m.text.clone(), st(if m.error { DOWN } else { TEXT }))), area);
+        f.render_widget(
+            Paragraph::new(Line::styled(
+                m.text.clone(),
+                st(if m.error { DOWN } else { TEXT }),
+            )),
+            area,
+        );
         return;
     }
     let mut shown: Vec<(&str, &str)> = vec![
@@ -297,7 +357,12 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
 fn centered(area: Rect, w: u16, h: u16) -> Rect {
     let w = w.min(area.width.saturating_sub(2));
     let h = h.min(area.height.saturating_sub(2));
-    Rect::new(area.x + (area.width - w) / 2, area.y + (area.height - h) / 2, w, h)
+    Rect::new(
+        area.x + (area.width - w) / 2,
+        area.y + (area.height - h) / 2,
+        w,
+        h,
+    )
 }
 
 fn draw_form(f: &mut Frame, area: Rect, form: &Form) {
@@ -306,7 +371,9 @@ fn draw_form(f: &mut Frame, area: Rect, form: &Form) {
     let want_h = form.fields.len() as u16 + 8;
     let rect = centered(area, 76, want_h);
     f.render_widget(Clear, rect);
-    let block = Block::new().style(Style::new().bg(PANEL)).padding(Padding::new(2, 2, 1, 1));
+    let block = Block::new()
+        .style(Style::new().bg(PANEL))
+        .padding(Padding::new(2, 2, 1, 1));
     let inner = block.inner(rect);
     f.render_widget(block, rect);
     if inner.height < 4 || inner.width < 20 {
@@ -325,27 +392,53 @@ fn draw_form(f: &mut Frame, area: Rect, form: &Form) {
     .areas(inner);
 
     f.render_widget(
-        Paragraph::new(Line::styled(form.title.clone(), st(TEXT).add_modifier(Modifier::BOLD))),
+        Paragraph::new(Line::styled(
+            form.title.clone(),
+            st(TEXT).add_modifier(Modifier::BOLD),
+        )),
         title_a,
     );
 
     let label_w = 13u16;
     let rows = fields_a.height as usize;
-    let start = if form.focus >= rows { form.focus + 1 - rows } else { 0 };
-    for (row, (idx, field)) in form.fields.iter().enumerate().skip(start).take(rows).enumerate() {
+    let start = if form.focus >= rows {
+        form.focus + 1 - rows
+    } else {
+        0
+    };
+    for (row, (idx, field)) in form
+        .fields
+        .iter()
+        .enumerate()
+        .skip(start)
+        .take(rows)
+        .enumerate()
+    {
         let y = fields_a.y + row as u16;
         let focused = idx == form.focus;
         let label_rect = Rect::new(fields_a.x, y, label_w, 1);
-        let val_rect = Rect::new(fields_a.x + label_w, y, fields_a.width.saturating_sub(label_w), 1);
+        let val_rect = Rect::new(
+            fields_a.x + label_w,
+            y,
+            fields_a.width.saturating_sub(label_w),
+            1,
+        );
         f.render_widget(
-            Paragraph::new(Span::styled(field.label, st(if focused { TEXT } else { MUTED }))),
+            Paragraph::new(Span::styled(
+                field.label,
+                st(if focused { TEXT } else { MUTED }),
+            )),
             label_rect,
         );
         let vw = val_rect.width.saturating_sub(2) as usize;
         let chars: Vec<char> = field.value.chars().collect();
         let scroll = field.cursor.saturating_sub(vw);
         let visible: String = chars.iter().skip(scroll).take(vw).collect();
-        let style = if focused { Style::new().bg(RAISED).fg(TEXT) } else { Style::new().fg(TEXT) };
+        let style = if focused {
+            Style::new().bg(RAISED).fg(TEXT)
+        } else {
+            Style::new().fg(TEXT)
+        };
         let content = if field.value.is_empty() && !focused {
             Span::styled(" —", st(DIM))
         } else {
@@ -370,7 +463,11 @@ fn draw_form(f: &mut Frame, area: Rect, form: &Form) {
         f.render_widget(Paragraph::new(Line::styled(e.clone(), st(DOWN))), err_a);
     }
     f.render_widget(
-        Paragraph::new(hints(&[("Tab", t.k_next_field), ("Ctrl+S", t.k_save), ("Esc", t.k_cancel)])),
+        Paragraph::new(hints(&[
+            ("Tab", t.k_next_field),
+            ("Ctrl+S", t.k_save),
+            ("Esc", t.k_cancel),
+        ])),
         keys_a,
     );
 }
@@ -379,7 +476,9 @@ fn draw_confirm(f: &mut Frame, area: Rect, h: &Host) {
     let t = s();
     let rect = centered(area, 52, 6);
     f.render_widget(Clear, rect);
-    let block = Block::new().style(Style::new().bg(PANEL)).padding(Padding::new(2, 2, 1, 1));
+    let block = Block::new()
+        .style(Style::new().bg(PANEL))
+        .padding(Padding::new(2, 2, 1, 1));
     let inner = block.inner(rect);
     f.render_widget(block, rect);
     let lines = vec![
@@ -397,7 +496,9 @@ fn draw_confirm(f: &mut Frame, area: Rect, h: &Host) {
 fn draw_lang(f: &mut Frame, area: Rect, sel: Lang) {
     let rect = centered(area, 44, 10);
     f.render_widget(Clear, rect);
-    let block = Block::new().style(Style::new().bg(PANEL)).padding(Padding::new(3, 3, 1, 1));
+    let block = Block::new()
+        .style(Style::new().bg(PANEL))
+        .padding(Padding::new(3, 3, 1, 1));
     let inner = block.inner(rect);
     f.render_widget(block, rect);
     let opt = |l: Lang, label: &'static str| {
@@ -426,7 +527,10 @@ fn draw_lang(f: &mut Frame, area: Rect, sel: Lang) {
 
 fn draw_help(f: &mut Frame, area: Rect, app: &App) {
     let t = s();
-    let mut lines = vec![Line::styled(t.help_title, st(TEXT).add_modifier(Modifier::BOLD)), Line::default()];
+    let mut lines = vec![
+        Line::styled(t.help_title, st(TEXT).add_modifier(Modifier::BOLD)),
+        Line::default(),
+    ];
     for (k, d) in t.help {
         lines.push(Line::from(vec![
             Span::styled(format!("{k:<11}"), st(TEXT)),
@@ -435,10 +539,15 @@ fn draw_help(f: &mut Frame, area: Rect, app: &App) {
     }
     lines.push(Line::default());
     lines.push(Line::styled(t.help_cli, st(MUTED)));
-    lines.push(Line::styled(tf!(t.help_store, short_path(&app.path.display().to_string())), st(DIM)));
+    lines.push(Line::styled(
+        tf!(t.help_store, short_path(&app.path.display().to_string())),
+        st(DIM),
+    ));
     let rect = centered(area, 78, lines.len() as u16 + 2);
     f.render_widget(Clear, rect);
-    let block = Block::new().style(Style::new().bg(PANEL)).padding(Padding::new(2, 2, 1, 1));
+    let block = Block::new()
+        .style(Style::new().bg(PANEL))
+        .padding(Padding::new(2, 2, 1, 1));
     let inner = block.inner(rect);
     f.render_widget(block, rect);
     f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);

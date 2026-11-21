@@ -2,12 +2,28 @@
 
 # sshm
 
+[![CI](https://github.com/iphysicc/sshm/actions/workflows/ci.yml/badge.svg)](https://github.com/iphysicc/sshm/actions/workflows/ci.yml)
+
 Terminalde çalışan SSH bağlantı yöneticisi. Sistemdeki OpenSSH'ı çağırır; anahtarlar,
 `known_hosts`, 2FA ve `~/.ssh/config` olduğu gibi çalışır.
 
-## Kurulum
+## İndir
 
-Rust ve OpenSSH istemcisi gerekir (Windows 10/11'de OpenSSH hazır gelir).
+Derlenmiş dosyalar [Releases](https://github.com/iphysicc/sshm/releases/latest) sayfasında:
+
+| Sistem | Dosya |
+| --- | --- |
+| Windows x64 | `sshm.exe` ya da `x86_64-pc-windows-msvc` zip |
+| Windows ARM64 | `aarch64-pc-windows-msvc` zip |
+| Linux x64 | `x86_64-unknown-linux-musl` (statik, her dağıtımda çalışır) |
+| macOS Apple Silicon / Intel | `aarch64-apple-darwin` / `x86_64-apple-darwin` |
+
+Dosyayı `PATH` içindeki bir klasöre koy. OpenSSH istemcisi gerekir (Windows 10/11, macOS ve
+çoğu Linux dağıtımında hazır gelir). Dosyalar imzalı değil: Windows SmartScreen onay
+isteyebilir (Ek bilgi → Yine de çalıştır), macOS'ta bir kez
+`xattr -d com.apple.quarantine sshm` çalıştır.
+
+## Kaynaktan derle
 
 ```powershell
 cargo install --git https://github.com/iphysicc/sshm
@@ -27,6 +43,7 @@ sshm --list        bağlantıları listele
 sshm --import      yeniden içe aktar (aynı uç noktalar atlanır)
 sshm --lang en|tr  arayüz dilini ayarla
 sshm --config      kayıt dosyasının yolunu yaz
+sshm --version     sürümü yaz
 ```
 
 | Tuş | İş |
@@ -70,6 +87,17 @@ ayarına takılabilir. Atlama sunucusu (ProxyJump) kullanan kayıtlar denetlenme
 
 Windows'ta `%APPDATA%\sshm\hosts.toml` (TOML, sshm kapalıyken elle düzenlenebilir).
 `SSHM_CONFIG` ortam değişkeni ile başka bir dosya gösterilebilir.
+
+## Sürüm çıkarma
+
+Bir sürüm etiketi gönderince GitHub Actions bütün hedefleri derleyip sürümü yayınlar:
+
+```powershell
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+Önce `Cargo.toml` içindeki `version` değerini artır ki `sshm --version` aynı olsun.
 
 ## Lisans
 

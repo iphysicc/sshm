@@ -11,7 +11,10 @@ use std::time::{Duration, Instant};
 #[derive(Clone, Debug)]
 pub enum Status {
     Checking,
-    Up { ms: u128, banner: Option<String> },
+    Up {
+        ms: u128,
+        banner: Option<String>,
+    },
     Down(Reason),
     /// Reached through a jump host, so it can't be probed directly.
     Skipped,

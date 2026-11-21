@@ -121,10 +121,10 @@ impl Store {
         if !path.exists() {
             return Ok(None);
         }
-        let text = fs::read_to_string(path)
-            .with_context(|| tf!(s().read_failed, path.display()))?;
-        let store: Store = toml::from_str(&text)
-            .with_context(|| tf!(s().corrupt, path.display()))?;
+        let text =
+            fs::read_to_string(path).with_context(|| tf!(s().read_failed, path.display()))?;
+        let store: Store =
+            toml::from_str(&text).with_context(|| tf!(s().corrupt, path.display()))?;
         Ok(Some(store))
     }
 
@@ -146,7 +146,9 @@ impl Store {
             return Some(i);
         }
         let unique = |pred: &dyn Fn(&Host) -> bool| {
-            let m: Vec<usize> = (0..self.hosts.len()).filter(|&i| pred(&self.hosts[i])).collect();
+            let m: Vec<usize> = (0..self.hosts.len())
+                .filter(|&i| pred(&self.hosts[i]))
+                .collect();
             (m.len() == 1).then(|| m[0])
         };
         unique(&|h: &Host| h.name.to_lowercase().starts_with(&q))

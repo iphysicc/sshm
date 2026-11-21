@@ -2,12 +2,28 @@
 
 # sshm
 
+[![CI](https://github.com/iphysicc/sshm/actions/workflows/ci.yml/badge.svg)](https://github.com/iphysicc/sshm/actions/workflows/ci.yml)
+
 A terminal SSH connection manager. It runs your system OpenSSH, so keys, `known_hosts`,
 2FA prompts and `~/.ssh/config` work exactly as they do today.
 
-## Install
+## Download
 
-Requires Rust and an OpenSSH client (built into Windows 10/11).
+Prebuilt binaries are on the [Releases](https://github.com/iphysicc/sshm/releases/latest) page:
+
+| System | File |
+| --- | --- |
+| Windows x64 | `sshm.exe`, or the `x86_64-pc-windows-msvc` zip |
+| Windows ARM64 | `aarch64-pc-windows-msvc` zip |
+| Linux x64 | `x86_64-unknown-linux-musl` (static, runs on any distro) |
+| macOS Apple Silicon / Intel | `aarch64-apple-darwin` / `x86_64-apple-darwin` |
+
+Put the binary in a folder on your `PATH`. You need an OpenSSH client (built into
+Windows 10/11, macOS and most Linux distros). The binaries are not code-signed: Windows
+SmartScreen may ask you to confirm (More info → Run anyway), and on macOS run
+`xattr -d com.apple.quarantine sshm` once.
+
+## Build from source
 
 ```powershell
 cargo install --git https://github.com/iphysicc/sshm
@@ -27,6 +43,7 @@ sshm --list        list connections
 sshm --import      import again (existing endpoints are skipped)
 sshm --lang en|tr  set the interface language
 sshm --config      print the path of the connections file
+sshm --version     print the version
 ```
 
 | Key | Action |
@@ -69,6 +86,17 @@ PerSourcePenalties. Connections that use a jump host (ProxyJump) are not checked
 
 `%APPDATA%\sshm\hosts.toml` on Windows (TOML, safe to edit by hand while sshm is not
 running). Point `SSHM_CONFIG` at another file to use that instead.
+
+## Releasing
+
+Push a version tag and GitHub Actions builds every target and publishes the release:
+
+```powershell
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+Bump `version` in `Cargo.toml` first so `sshm --version` matches.
 
 ## License
 

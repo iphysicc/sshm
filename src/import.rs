@@ -160,7 +160,11 @@ pub fn parse_ssh_command(tokens: &[String], base: &Path) -> Option<Host> {
     if h.host.is_empty() {
         return None;
     }
-    h.extra = extra.iter().map(|a| quote_arg(a)).collect::<Vec<_>>().join(" ");
+    h.extra = extra
+        .iter()
+        .map(|a| quote_arg(a))
+        .collect::<Vec<_>>()
+        .join(" ");
     Some(h)
 }
 
@@ -226,7 +230,10 @@ pub fn parse_ssh_config(text: &str) -> Vec<Host> {
             continue;
         }
         let (k, v) = match l.find(|c: char| c.is_whitespace() || c == '=') {
-            Some(i) => (&l[..i], l[i + 1..].trim_start_matches(['=', ' ', '\t']).trim()),
+            Some(i) => (
+                &l[..i],
+                l[i + 1..].trim_start_matches(['=', ' ', '\t']).trim(),
+            ),
             None => continue,
         };
         let v = v.trim_matches('"');
@@ -248,7 +255,9 @@ pub fn parse_ssh_config(text: &str) -> Vec<Host> {
             "match" => out.append(&mut cur),
             "hostname" => cur.iter_mut().for_each(|h| h.host = v.to_string()),
             "user" => cur.iter_mut().for_each(|h| h.user = v.to_string()),
-            "port" => cur.iter_mut().for_each(|h| h.port = v.parse().unwrap_or(22)),
+            "port" => cur
+                .iter_mut()
+                .for_each(|h| h.port = v.parse().unwrap_or(22)),
             "identityfile" => cur.iter_mut().filter(|h| h.key.is_empty()).for_each(|h| {
                 h.key = resolve_path(v, &home().join(".ssh"));
             }),
@@ -256,7 +265,8 @@ pub fn parse_ssh_config(text: &str) -> Vec<Host> {
             "localforward" | "remoteforward" | "dynamicforward" => {
                 let flag = &k.to_lowercase()[..1].to_uppercase();
                 let spec = v.split_whitespace().collect::<Vec<_>>().join(":");
-                cur.iter_mut().for_each(|h| h.forwards.push(format!("{flag} {spec}")));
+                cur.iter_mut()
+                    .for_each(|h| h.forwards.push(format!("{flag} {spec}")));
             }
             _ => {}
         }
@@ -276,15 +286,17 @@ pub fn discover() -> Vec<Host> {
         .flatten()
         .collect();
     for dir in dirs_to_scan {
-        let Ok(entries) = fs::read_dir(&dir) else { continue };
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
         let mut paths: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
         paths.sort();
         for p in paths {
             let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase());
-            if matches!(ext.as_deref(), Some("bat") | Some("cmd")) {
-                if let Some(h) = parse_bat(&p) {
-                    found.push(h);
-                }
+            if matches!(ext.as_deref(), Some("bat") | Some("cmd"))
+                && let Some(h) = parse_bat(&p)
+            {
+                found.push(h);
             }
         }
     }
@@ -327,11 +339,16 @@ mod tests {
     fn parses_flags() {
         let base = Path::new("/tmp");
         let h = parse_ssh_command(
-            &tokenize("ssh.exe -p 2222 -J me@bastion -L 8080:localhost:80 -o User=root -A srv uptime"),
+            &tokenize(
+                "ssh.exe -p 2222 -J me@bastion -L 8080:localhost:80 -o User=root -A srv uptime",
+            ),
             base,
         )
         .unwrap();
-        assert_eq!((h.port, h.jump.as_str(), h.user.as_str()), (2222, "me@bastion", "root"));
+        assert_eq!(
+            (h.port, h.jump.as_str(), h.user.as_str()),
+            (2222, "me@bastion", "root")
+        );
         assert_eq!(h.host, "srv");
         assert_eq!(h.forwards, vec!["L 8080:localhost:80"]);
         assert_eq!(h.extra, "-A");
