@@ -1,10 +1,12 @@
+use crate::i18n::s;
+use crate::tf;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Tek bir SSH bağlantısı. Boş string = ayar yok.
+/// A single SSH connection. Empty string = not set.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Host {
@@ -20,13 +22,13 @@ pub struct Host {
     /// ProxyJump (-J)
     #[serde(skip_serializing_if = "String::is_empty")]
     pub jump: String,
-    /// Doluysa bağlanınca `tmux new -A -s <ad>` ile kalıcı oturuma girilir.
+    /// When set, connecting runs `tmux new -A -s <name>` for a persistent session.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub tmux: String,
     /// "L 8080:localhost:80", "R 9000:localhost:9000", "D 1080"
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub forwards: Vec<String>,
-    /// Ek ssh argümanları, olduğu gibi eklenir.
+    /// Extra ssh arguments, appended as-is.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub extra: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -70,7 +72,7 @@ impl Host {
         }
     }
 
-    /// Durum tablosunun anahtarı; aynı uç noktayı paylaşan kayıtlar tek kez denetlenir.
+    /// Status map key; entries sharing an endpoint are probed once.
     pub fn probe_key(&self) -> String {
         format!("{}:{}", self.host.to_lowercase(), self.port)
     }
@@ -96,6 +98,9 @@ pub fn now() -> u64 {
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct Store {
+    /// "en" | "tr"; empty = English.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lang: Option<String>,
     #[serde(default, rename = "host")]
     pub hosts: Vec<Host>,
 }
@@ -110,18 +115,16 @@ pub fn config_path() -> PathBuf {
         .join("hosts.toml")
 }
 
-const HEADER: &str = "# sshm bağlantıları. Elle de düzenlenebilir; sshm açıkken değil.\n\n";
-
 impl Store {
-    /// Dosya yoksa `None`.
+    /// `None` if the file does not exist.
     pub fn load(path: &Path) -> Result<Option<Store>> {
         if !path.exists() {
             return Ok(None);
         }
         let text = fs::read_to_string(path)
-            .with_context(|| format!("{} okunamadı", path.display()))?;
+            .with_context(|| tf!(s().read_failed, path.display()))?;
         let store: Store = toml::from_str(&text)
-            .with_context(|| format!("{} bozuk", path.display()))?;
+            .with_context(|| tf!(s().corrupt, path.display()))?;
         Ok(Some(store))
     }
 
@@ -131,12 +134,12 @@ impl Store {
         }
         let body = toml::to_string_pretty(self)?;
         let tmp = path.with_extension("toml.tmp");
-        fs::write(&tmp, format!("{HEADER}{body}"))?;
-        fs::rename(&tmp, path).with_context(|| format!("{} yazılamadı", path.display()))?;
+        fs::write(&tmp, format!("{}\n\n{body}", s().file_header))?;
+        fs::rename(&tmp, path).with_context(|| tf!(s().write_failed, path.display()))?;
         Ok(())
     }
 
-    /// Tam ad, sonra tek eşleşen önek, sonra tek eşleşen parça.
+    /// Exact name, then a unique prefix, then a unique substring.
     pub fn find(&self, query: &str) -> Option<usize> {
         let q = query.to_lowercase();
         if let Some(i) = self.hosts.iter().position(|h| h.name.to_lowercase() == q) {

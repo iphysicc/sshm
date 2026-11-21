@@ -1,14 +1,16 @@
 use crate::app::{App, Form, Mode};
+use crate::i18n::{self, s, Lang};
 use crate::model::{now, Host};
 use crate::probe::Status;
 use crate::ssh;
+use crate::tf;
 use ratatui::layout::{Constraint, Layout, Margin, Position, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, List, ListItem, ListState, Padding, Paragraph, Wrap};
 use ratatui::Frame;
 
-// Kromasız zemin; renk yalnız durum için.
+// Achromatic surfaces; color is used only for status.
 const BG: Color = Color::Rgb(17, 17, 17);
 const PANEL: Color = Color::Rgb(27, 27, 28);
 const RAISED: Color = Color::Rgb(38, 38, 40);
@@ -19,7 +21,7 @@ const DIM: Color = Color::Rgb(96, 96, 98);
 const UP: Color = Color::Rgb(94, 214, 140);
 const DOWN: Color = Color::Rgb(240, 113, 113);
 
-fn s(fg: Color) -> Style {
+fn st(fg: Color) -> Style {
     Style::new().fg(fg)
 }
 
@@ -47,6 +49,7 @@ pub fn draw(f: &mut Frame, app: &App) {
 }
 
 fn draw_top(f: &mut Frame, area: Rect, app: &App) {
+    let t = s();
     let total = app.store.hosts.len();
     let up = app
         .store
@@ -55,26 +58,33 @@ fn draw_top(f: &mut Frame, area: Rect, app: &App) {
         .filter(|h| matches!(app.status_of(h), Some(Status::Up { .. })))
         .count();
     let left = Line::from(vec![
-        Span::styled("sshm", s(TEXT).add_modifier(Modifier::BOLD)),
-        Span::styled("  bağlantılar", s(DIM)),
+        Span::styled("sshm", st(TEXT).add_modifier(Modifier::BOLD)),
+        Span::styled(format!("  {}", t.subtitle), st(DIM)),
     ]);
     let mut right = vec![];
     if !app.filter.is_empty() {
-        right.push(Span::styled(format!("/{}  ", app.filter), s(MUTED)));
-        right.push(Span::styled(format!("{} eşleşme · ", app.visible().len()), s(DIM)));
+        right.push(Span::styled(format!("/{}  ", app.filter), st(MUTED)));
+        right.push(Span::styled(format!("{} · ", tf!(t.matches, app.visible().len())), st(DIM)));
     }
-    right.push(Span::styled(format!("{total} sunucu"), s(MUTED)));
+    right.push(Span::styled(tf!(t.servers, total), st(MUTED)));
     if total > 0 {
-        right.push(Span::styled(" · ", s(DIM)));
-        right.push(Span::styled(format!("{up} açık"), s(if up > 0 { UP } else { MUTED })));
+        right.push(Span::styled(" · ", st(DIM)));
+        right.push(Span::styled(tf!(t.up_n, up), st(if up > 0 { UP } else { MUTED })));
     }
+    // Language indicator doubles as a hint for the `l` switch.
+    let (on, off) = match i18n::lang() {
+        Lang::En => ("EN", "TR"),
+        Lang::Tr => ("TR", "EN"),
+    };
+    right.push(Span::styled("   ", st(DIM)));
+    right.push(Span::styled(on, st(MUTED)));
+    right.push(Span::styled(format!(" {off}"), st(DIM)));
     f.render_widget(Paragraph::new(left), area);
     f.render_widget(Paragraph::new(Line::from(right)).right_aligned(), area);
 }
 
 fn draw_body(f: &mut Frame, area: Rect, app: &App) {
-    let wide = area.width >= 78;
-    if wide {
+    if area.width >= 78 {
         let list_w = (area.width * 2 / 5).clamp(30, 46);
         let [list, details] =
             Layout::horizontal([Constraint::Length(list_w), Constraint::Fill(1)]).spacing(1).areas(area);
@@ -85,35 +95,35 @@ fn draw_body(f: &mut Frame, area: Rect, app: &App) {
     }
 }
 
-fn status_cell(st: Option<&Status>) -> (&'static str, Color, String) {
-    match st {
+fn status_cell(status: Option<&Status>) -> (&'static str, Color, String) {
+    let t = s();
+    match status {
         None => ("○", DIM, String::new()),
         Some(Status::Checking) => ("○", DIM, "…".into()),
         Some(Status::Up { ms, .. }) => ("●", UP, format!("{ms} ms")),
-        Some(Status::Down(_)) => ("●", DOWN, "kapalı".into()),
-        Some(Status::Skipped) => ("◌", MUTED, "atlama".into()),
+        Some(Status::Down(_)) => ("●", DOWN, t.cell_down.into()),
+        Some(Status::Skipped) => ("◌", MUTED, t.cell_jump.into()),
     }
 }
 
+fn group_label(h: &Host) -> &str {
+    if h.group.is_empty() { s().other_group } else { h.group.as_str() }
+}
+
 fn draw_list(f: &mut Frame, area: Rect, app: &App) {
+    let t = s();
     let vis = app.visible();
     let inner = area.inner(Margin::new(1, 0));
     if vis.is_empty() {
         let lines = if app.store.hosts.is_empty() {
             vec![
-                Line::styled("Henüz bağlantı yok.", s(TEXT)),
+                Line::styled(t.empty_title, st(TEXT)),
                 Line::default(),
-                Line::from(vec![Span::styled("a", s(TEXT)), Span::styled("  yeni bağlantı ekle", s(MUTED))]),
-                Line::from(vec![
-                    Span::styled("i", s(TEXT)),
-                    Span::styled("  Belgeler/Masaüstü'ndeki .bat dosyalarından al", s(MUTED)),
-                ]),
+                Line::from(vec![Span::styled("a", st(TEXT)), Span::styled(format!("  {}", t.empty_add), st(MUTED))]),
+                Line::from(vec![Span::styled("i", st(TEXT)), Span::styled(format!("  {}", t.empty_import), st(MUTED))]),
             ]
         } else {
-            vec![
-                Line::styled("Eşleşen bağlantı yok.", s(TEXT)),
-                Line::styled("Esc ile filtreyi temizle", s(MUTED)),
-            ]
+            vec![Line::styled(t.no_match, st(TEXT)), Line::styled(t.no_match_hint, st(MUTED))]
         };
         f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
         return;
@@ -125,34 +135,29 @@ fn draw_list(f: &mut Frame, area: Rect, app: &App) {
     let mut last_group: Option<String> = None;
     for (pos, &i) in vis.iter().enumerate() {
         let h = &app.store.hosts[i];
-        let g = if h.group.is_empty() { "Diğer".to_string() } else { h.group.clone() };
+        let g = group_label(h).to_string();
         if last_group.as_deref() != Some(g.as_str()) {
             if last_group.is_some() {
                 items.push(ListItem::new(Line::default()));
             }
-            let count = vis.iter().filter(|&&j| {
-                let hj = &app.store.hosts[j];
-                (if hj.group.is_empty() { "Diğer" } else { hj.group.as_str() }) == g
-            }).count();
+            let count = vis.iter().filter(|&&j| group_label(&app.store.hosts[j]) == g).count();
             items.push(ListItem::new(Line::from(vec![
-                Span::styled(g.clone(), s(MUTED).add_modifier(Modifier::BOLD)),
-                Span::styled(format!("  {count}"), s(DIM)),
+                Span::styled(g.clone(), st(MUTED).add_modifier(Modifier::BOLD)),
+                Span::styled(format!("  {count}"), st(DIM)),
             ])));
             last_group = Some(g);
         }
         let (dot, dot_c, right) = status_cell(app.status_of(h));
-        let left_spans = vec![
+        let mut spans = vec![
             Span::raw(" "),
-            Span::styled(dot, s(dot_c)),
+            Span::styled(dot, st(dot_c)),
             Span::raw("  "),
-            Span::styled(h.name.clone(), s(TEXT)),
+            Span::styled(h.name.clone(), st(TEXT)),
         ];
-        let used: usize = left_spans.iter().map(|sp| sp.width()).sum();
-        let right_w = right.chars().count();
-        let pad = width.saturating_sub(used + right_w + 1);
-        let mut spans = left_spans;
+        let used: usize = spans.iter().map(|sp| sp.width()).sum();
+        let pad = width.saturating_sub(used + right.chars().count() + 1);
         spans.push(Span::raw(" ".repeat(pad)));
-        spans.push(Span::styled(right, s(DIM)));
+        spans.push(Span::styled(right, st(DIM)));
         if pos == app.selected {
             sel_item = items.len();
         }
@@ -164,20 +169,9 @@ fn draw_list(f: &mut Frame, area: Rect, app: &App) {
     f.render_stateful_widget(list, inner, &mut state);
 }
 
-fn ago(ts: u64) -> String {
-    let d = now().saturating_sub(ts);
-    match d {
-        0..=59 => "az önce".into(),
-        60..=3599 => format!("{} dk önce", d / 60),
-        3600..=86399 => format!("{} saat önce", d / 3600),
-        _ => format!("{} gün önce", d / 86400),
-    }
-}
-
 fn short_path(p: &str) -> String {
     if let Some(home) = dirs::home_dir() {
-        let hs = home.display().to_string();
-        if let Some(rest) = p.strip_prefix(&hs) {
+        if let Some(rest) = p.strip_prefix(&home.display().to_string()) {
             return format!("~{rest}");
         }
     }
@@ -185,6 +179,7 @@ fn short_path(p: &str) -> String {
 }
 
 fn draw_details(f: &mut Frame, area: Rect, app: &App) {
+    let t = s();
     let block = Block::new().style(Style::new().bg(PANEL)).padding(Padding::new(2, 2, 1, 1));
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -192,60 +187,58 @@ fn draw_details(f: &mut Frame, area: Rect, app: &App) {
     let h = &app.store.hosts[i];
 
     let row = |label: &str, value: Vec<Span<'static>>| -> Line<'static> {
-        let mut spans = vec![Span::styled(format!("{label:<12}"), s(DIM))];
+        let mut spans = vec![Span::styled(format!("{label:<12}"), st(DIM))];
         spans.extend(value);
         Line::from(spans)
     };
-    let txt = |v: String| vec![Span::styled(v, s(TEXT))];
+    let txt = |v: String| vec![Span::styled(v, st(TEXT))];
 
     let mut lines = vec![
-        Line::styled(h.name.clone(), s(TEXT).add_modifier(Modifier::BOLD)),
-        Line::styled(h.target(), s(MUTED)),
+        Line::styled(h.name.clone(), st(TEXT).add_modifier(Modifier::BOLD)),
+        Line::styled(h.target(), st(MUTED)),
         Line::default(),
     ];
 
-    let st = app.status_of(h);
-    let state = match st {
-        None => vec![Span::styled("denetlenmedi", s(MUTED))],
-        Some(Status::Checking) => vec![Span::styled("denetleniyor…", s(MUTED))],
-        Some(Status::Up { ms, .. }) => vec![
-            Span::styled("açık", s(UP)),
-            Span::styled(format!(" · {ms} ms"), s(MUTED)),
-        ],
-        Some(Status::Down(why)) => vec![
-            Span::styled("kapalı", s(DOWN)),
-            Span::styled(format!(" · {why}"), s(MUTED)),
-        ],
-        Some(Status::Skipped) => vec![Span::styled("atlama üzerinden, doğrudan denetlenmez", s(MUTED))],
+    let status = app.status_of(h);
+    let state = match status {
+        None => vec![Span::styled(t.st_unchecked, st(MUTED))],
+        Some(Status::Checking) => vec![Span::styled(t.st_checking, st(MUTED))],
+        Some(Status::Up { ms, .. }) => {
+            vec![Span::styled(t.st_up, st(UP)), Span::styled(format!(" · {ms} ms"), st(MUTED))]
+        }
+        Some(Status::Down(why)) => {
+            vec![Span::styled(t.st_down, st(DOWN)), Span::styled(format!(" · {}", why.text()), st(MUTED))]
+        }
+        Some(Status::Skipped) => vec![Span::styled(t.st_skipped, st(MUTED))],
     };
-    lines.push(row("Durum", state));
-    if let Some(Status::Up { banner: Some(b), .. }) = st {
-        lines.push(row("Sürüm", vec![Span::styled(b.clone(), s(MUTED))]));
+    lines.push(row(t.r_status, state));
+    if let Some(Status::Up { banner: Some(b), .. }) = status {
+        lines.push(row(t.r_version, vec![Span::styled(b.clone(), st(MUTED))]));
     }
-    lines.push(row("Port", txt(h.port.to_string())));
+    lines.push(row(t.r_port, txt(h.port.to_string())));
     if !h.key.is_empty() {
-        lines.push(row("Anahtar", txt(short_path(&h.key))));
+        lines.push(row(t.r_key, txt(short_path(&h.key))));
     }
     if !h.jump.is_empty() {
-        lines.push(row("Atlama", txt(h.jump.clone())));
+        lines.push(row(t.r_jump, txt(h.jump.clone())));
     }
     if !h.tmux.is_empty() {
-        lines.push(row("tmux", txt(format!("{} (kalıcı oturum)", h.tmux))));
+        lines.push(row(t.r_tmux, txt(tf!(t.persistent, h.tmux))));
     }
     if !h.forwards.is_empty() {
-        lines.push(row("Yönlendirme", txt(h.forwards.join(", "))));
+        lines.push(row(t.r_fwd, txt(h.forwards.join(", "))));
     }
     if !h.extra.is_empty() {
-        lines.push(row("Ek argüman", txt(h.extra.clone())));
+        lines.push(row(t.r_extra, txt(h.extra.clone())));
     }
     let last = match h.last_used {
-        Some(t) => format!("{} · {} kez", ago(t), h.uses),
-        None => "hiç bağlanılmadı".into(),
+        Some(ts) => format!("{} · {}", i18n::ago(now().saturating_sub(ts)), i18n::times(h.uses)),
+        None => t.never_used.into(),
     };
-    lines.push(row("Son", vec![Span::styled(last, s(MUTED))]));
+    lines.push(row(t.r_last, vec![Span::styled(last, st(MUTED))]));
     if !h.notes.is_empty() {
         lines.push(Line::default());
-        lines.push(Line::styled(h.notes.clone(), s(MUTED)));
+        lines.push(Line::styled(h.notes.clone(), st(MUTED)));
     }
 
     let cmd = ssh::command_line(h, false);
@@ -253,10 +246,7 @@ fn draw_details(f: &mut Frame, area: Rect, app: &App) {
     let [top, cmd_area] =
         Layout::vertical([Constraint::Fill(1), Constraint::Length(cmd_h)]).spacing(1).areas(inner);
     f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), top);
-    f.render_widget(
-        Paragraph::new(Line::styled(cmd, s(DIM))).wrap(Wrap { trim: false }),
-        cmd_area,
-    );
+    f.render_widget(Paragraph::new(Line::styled(cmd, st(DIM))).wrap(Wrap { trim: false }), cmd_area);
 }
 
 fn hints(pairs: &[(&str, &str)]) -> Line<'static> {
@@ -265,54 +255,42 @@ fn hints(pairs: &[(&str, &str)]) -> Line<'static> {
         if i > 0 {
             spans.push(Span::raw("   "));
         }
-        spans.push(Span::styled(k.to_string(), s(TEXT)));
-        spans.push(Span::styled(format!(" {label}"), s(DIM)));
+        spans.push(Span::styled(k.to_string(), st(TEXT)));
+        spans.push(Span::styled(format!(" {label}"), st(DIM)));
     }
     Line::from(spans)
 }
 
 fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
-    match &app.mode {
-        Mode::Filter => {
-            let line = Line::from(vec![
-                Span::styled("/", s(MUTED)),
-                Span::styled(app.filter.clone(), s(TEXT)),
-            ]);
-            f.render_widget(Paragraph::new(line), area);
-            let x = area.x + 1 + Span::raw(app.filter.clone()).width() as u16;
-            f.set_cursor_position(Position::new(x.min(area.right().saturating_sub(1)), area.y));
-            f.render_widget(
-                Paragraph::new(hints(&[("⏎", "tamam"), ("Esc", "temizle")])).right_aligned(),
-                area,
-            );
-        }
-        _ => {
-            if let Some(m) = &app.message {
-                f.render_widget(
-                    Paragraph::new(Line::styled(m.text.clone(), s(if m.error { DOWN } else { TEXT }))),
-                    area,
-                );
-                return;
-            }
-            let all = [
-                ("⏎", "bağlan"),
-                ("t", "sekme"),
-                ("f", "sftp"),
-                ("/", "ara"),
-                ("a", "ekle"),
-                ("e", "düzenle"),
-                ("c", "kopyala"),
-                ("?", "tümü"),
-                ("q", "çık"),
-            ];
-            // Sığmayanları baştan değil ortadan at: ? ve q hep kalsın.
-            let mut shown: Vec<(&str, &str)> = all.to_vec();
-            while hints(&shown).width() > area.width as usize && shown.len() > 3 {
-                shown.remove(shown.len() - 3);
-            }
-            f.render_widget(Paragraph::new(hints(&shown)), area);
-        }
+    let t = s();
+    if let Mode::Filter = app.mode {
+        let line = Line::from(vec![Span::styled("/", st(MUTED)), Span::styled(app.filter.clone(), st(TEXT))]);
+        f.render_widget(Paragraph::new(line), area);
+        let x = area.x + 1 + Span::raw(app.filter.clone()).width() as u16;
+        f.set_cursor_position(Position::new(x.min(area.right().saturating_sub(1)), area.y));
+        f.render_widget(Paragraph::new(hints(&[("⏎", t.k_ok), ("Esc", t.k_clear)])).right_aligned(), area);
+        return;
     }
+    if let Some(m) = &app.message {
+        f.render_widget(Paragraph::new(Line::styled(m.text.clone(), st(if m.error { DOWN } else { TEXT }))), area);
+        return;
+    }
+    let mut shown: Vec<(&str, &str)> = vec![
+        ("⏎", t.k_connect),
+        ("t", t.k_tab),
+        ("f", t.k_sftp),
+        ("/", t.k_search),
+        ("a", t.k_add),
+        ("e", t.k_edit),
+        ("c", t.k_copy),
+        ("?", t.k_help),
+        ("q", t.k_quit),
+    ];
+    // Drop from the middle when narrow so ? and q always stay.
+    while hints(&shown).width() > area.width as usize && shown.len() > 3 {
+        shown.remove(shown.len() - 3);
+    }
+    f.render_widget(Paragraph::new(hints(&shown)), area);
 }
 
 fn centered(area: Rect, w: u16, h: u16) -> Rect {
@@ -322,9 +300,9 @@ fn centered(area: Rect, w: u16, h: u16) -> Rect {
 }
 
 fn draw_form(f: &mut Frame, area: Rect, form: &Form) {
-    let n = form.fields.len() as u16;
-    // başlık + boşluk + alanlar + boşluk + ipucu + hata + alt satır
-    let want_h = n + 8;
+    let t = s();
+    // padding + title + gap + fields + gap + hint + error + keys
+    let want_h = form.fields.len() as u16 + 8;
     let rect = centered(area, 76, want_h);
     f.render_widget(Clear, rect);
     let block = Block::new().style(Style::new().bg(PANEL)).padding(Padding::new(2, 2, 1, 1));
@@ -345,7 +323,10 @@ fn draw_form(f: &mut Frame, area: Rect, form: &Form) {
     ])
     .areas(inner);
 
-    f.render_widget(Paragraph::new(Line::styled(form.title.clone(), s(TEXT).add_modifier(Modifier::BOLD))), title_a);
+    f.render_widget(
+        Paragraph::new(Line::styled(form.title.clone(), st(TEXT).add_modifier(Modifier::BOLD))),
+        title_a,
+    );
 
     let label_w = 13u16;
     let rows = fields_a.height as usize;
@@ -356,44 +337,45 @@ fn draw_form(f: &mut Frame, area: Rect, form: &Form) {
         let label_rect = Rect::new(fields_a.x, y, label_w, 1);
         let val_rect = Rect::new(fields_a.x + label_w, y, fields_a.width.saturating_sub(label_w), 1);
         f.render_widget(
-            Paragraph::new(Span::styled(field.label, s(if focused { TEXT } else { MUTED }))),
+            Paragraph::new(Span::styled(field.label, st(if focused { TEXT } else { MUTED }))),
             label_rect,
         );
         let vw = val_rect.width.saturating_sub(2) as usize;
         let chars: Vec<char> = field.value.chars().collect();
-        let scroll = if field.cursor > vw { field.cursor - vw } else { 0 };
+        let scroll = field.cursor.saturating_sub(vw);
         let visible: String = chars.iter().skip(scroll).take(vw).collect();
         let style = if focused { Style::new().bg(RAISED).fg(TEXT) } else { Style::new().fg(TEXT) };
         let content = if field.value.is_empty() && !focused {
-            Span::styled(" —", s(DIM))
+            Span::styled(" —", st(DIM))
         } else {
             Span::raw(format!(" {visible}"))
         };
         f.render_widget(Paragraph::new(Line::from(content)).style(style), val_rect);
         if focused {
-            let cx = val_rect.x + 1 + Span::raw(chars[scroll..field.cursor].iter().collect::<String>()).width() as u16;
+            let before: String = chars[scroll..field.cursor].iter().collect();
+            let cx = val_rect.x + 1 + Span::raw(before).width() as u16;
             f.set_cursor_position(Position::new(cx.min(val_rect.right().saturating_sub(1)), y));
         }
     }
 
-    let hint = form.fields[form.focus].hint;
     f.render_widget(
         Paragraph::new(Line::from(vec![
             Span::raw(" ".repeat(label_w as usize + 1)),
-            Span::styled(hint, s(DIM)),
+            Span::styled(form.fields[form.focus].hint, st(DIM)),
         ])),
         hint_a,
     );
     if let Some(e) = &form.error {
-        f.render_widget(Paragraph::new(Line::styled(e.clone(), s(DOWN))), err_a);
+        f.render_widget(Paragraph::new(Line::styled(e.clone(), st(DOWN))), err_a);
     }
     f.render_widget(
-        Paragraph::new(hints(&[("Tab", "sonraki alan"), ("Ctrl+S", "kaydet"), ("Esc", "vazgeç")])),
+        Paragraph::new(hints(&[("Tab", t.k_next_field), ("Ctrl+S", t.k_save), ("Esc", t.k_cancel)])),
         keys_a,
     );
 }
 
 fn draw_confirm(f: &mut Frame, area: Rect, h: &Host) {
+    let t = s();
     let rect = centered(area, 52, 6);
     f.render_widget(Clear, rect);
     let block = Block::new().style(Style::new().bg(PANEL)).padding(Padding::new(2, 2, 1, 1));
@@ -401,44 +383,29 @@ fn draw_confirm(f: &mut Frame, area: Rect, h: &Host) {
     f.render_widget(block, rect);
     let lines = vec![
         Line::from(vec![
-            Span::styled(h.name.clone(), s(TEXT).add_modifier(Modifier::BOLD)),
-            Span::styled(" silinsin mi?", s(TEXT)),
+            Span::styled(t.confirm_pre, st(TEXT)),
+            Span::styled(h.name.clone(), st(TEXT).add_modifier(Modifier::BOLD)),
+            Span::styled(t.confirm_post, st(TEXT)),
         ]),
         Line::default(),
-        hints(&[("y", "sil"), ("herhangi bir tuş", "vazgeç")]),
+        hints(&[("y", t.k_delete), ("…", t.k_any)]),
     ];
     f.render_widget(Paragraph::new(lines), inner);
 }
 
 fn draw_help(f: &mut Frame, area: Rect, app: &App) {
-    let keys: &[(&str, &str)] = &[
-        ("⏎", "bu terminalde bağlan; çıkınca listeye dönülür"),
-        ("t", "Windows Terminal'de yeni sekmede bağlan"),
-        ("f", "sftp oturumu aç"),
-        ("c", "ssh komutunu panoya kopyala"),
-        ("/", "ara (ad, adres, grup, not); tek sonuçta ⏎ bağlanır"),
-        ("a  e  y", "ekle · düzenle · kopyasını oluştur"),
-        ("d", "sil"),
-        ("r", "sunucuları yeniden denetle"),
-        ("i", ".bat dosyalarından ve ~/.ssh/config'ten içe aktar"),
-        ("j k  ↑ ↓", "gezin   g G  baş / son"),
-        ("q", "çık"),
-    ];
-    let mut lines = vec![
-        Line::styled("Kısayollar", s(TEXT).add_modifier(Modifier::BOLD)),
-        Line::default(),
-    ];
-    for (k, d) in keys {
+    let t = s();
+    let mut lines = vec![Line::styled(t.help_title, st(TEXT).add_modifier(Modifier::BOLD)), Line::default()];
+    for (k, d) in t.help {
         lines.push(Line::from(vec![
-            Span::styled(format!("{k:<11}"), s(TEXT)),
-            Span::styled(d.to_string(), s(MUTED)),
+            Span::styled(format!("{k:<11}"), st(TEXT)),
+            Span::styled(d.to_string(), st(MUTED)),
         ]));
     }
     lines.push(Line::default());
-    lines.push(Line::styled("Komut satırı: sshm <ad> doğrudan bağlanır, sshm --list listeler", s(MUTED)));
-    lines.push(Line::styled(format!("Kayıtlar: {}", short_path(&app.path.display().to_string())), s(DIM)));
-    let h = lines.len() as u16 + 2;
-    let rect = centered(area, 74, h);
+    lines.push(Line::styled(t.help_cli, st(MUTED)));
+    lines.push(Line::styled(tf!(t.help_store, short_path(&app.path.display().to_string())), st(DIM)));
+    let rect = centered(area, 78, lines.len() as u16 + 2);
     f.render_widget(Clear, rect);
     let block = Block::new().style(Style::new().bg(PANEL)).padding(Padding::new(2, 2, 1, 1));
     let inner = block.inner(rect);

@@ -1,4 +1,6 @@
+use crate::i18n::{self, s};
 use crate::import;
+use crate::tf;
 use crate::model::{Host, Store};
 use crate::probe::{self, Status};
 use crate::ssh;
@@ -80,7 +82,7 @@ impl App {
 
     pub fn save(&mut self) {
         if let Err(e) = self.store.save(&self.path) {
-            self.error(format!("Kaydedilemedi: {e:#}"));
+            self.error(tf!(s().save_failed, format!("{e:#}")));
         }
     }
 
@@ -108,7 +110,7 @@ impl App {
         self.status.get(&h.probe_key())
     }
 
-    /// Filtrelenmiş ve gruplara göre sıralanmış kayıt indeksleri.
+    /// Indices of filtered entries, sorted by group then name.
     pub fn visible(&self) -> Vec<usize> {
         let terms: Vec<String> = self.filter.to_lowercase().split_whitespace().map(String::from).collect();
         let hosts = &self.store.hosts;
@@ -168,7 +170,7 @@ impl App {
         self.mode = match mode {
             Mode::Normal => {
                 self.key_normal(k);
-                // key_normal modu değiştirmiş olabilir
+                // key_normal may have changed the mode
                 std::mem::replace(&mut self.mode, Mode::Normal)
             }
             Mode::Filter => self.key_filter(k),
@@ -217,7 +219,7 @@ impl App {
                     let h = self.store.hosts[i].clone();
                     match ssh::open_tab(&h) {
                         Ok(()) => {
-                            self.info(format!("{} yeni sekmede açıldı", h.name));
+                            self.info(tf!(s().opened_tab, h.name));
                         }
                         Err(e) => self.error(format!("{e:#}")),
                     }
@@ -227,28 +229,28 @@ impl App {
                 if let Some(i) = self.current() {
                     let cmd = ssh::command_line(&self.store.hosts[i], true);
                     match ssh::copy_to_clipboard(&cmd) {
-                        Ok(()) => self.info("Komut panoya kopyalandı"),
+                        Ok(()) => self.info(s().copied),
                         Err(e) => self.error(format!("{e:#}")),
                     }
                 }
             }
             KeyCode::Char('/') => self.mode = Mode::Filter,
             KeyCode::Char('a') => {
-                self.mode = Mode::Form(Form::new("Yeni bağlantı", None, &Host::default()));
+                self.mode = Mode::Form(Form::new(s().form_new, None, &Host::default()));
             }
             KeyCode::Char('e') => {
                 if let Some(i) = self.current() {
                     let h = self.store.hosts[i].clone();
-                    self.mode = Mode::Form(Form::new(&format!("{} düzenleniyor", h.name), Some(i), &h));
+                    self.mode = Mode::Form(Form::new(&tf!(s().form_edit, h.name), Some(i), &h));
                 }
             }
             KeyCode::Char('y') => {
                 if let Some(i) = self.current() {
                     let mut h = self.store.hosts[i].clone();
-                    h.name = self.store.unique_name(&format!("{}-kopya", h.name));
+                    h.name = self.store.unique_name(&format!("{}-{}", h.name, s().copy_suffix));
                     h.last_used = None;
                     h.uses = 0;
-                    self.mode = Mode::Form(Form::new("Kopyadan yeni bağlantı", None, &h));
+                    self.mode = Mode::Form(Form::new(s().form_copy, None, &h));
                 }
             }
             KeyCode::Char('d') | KeyCode::Delete => {
@@ -259,9 +261,16 @@ impl App {
             KeyCode::Char('r') => {
                 self.status.clear();
                 self.probe_all();
-                self.info("Sunucular yeniden denetleniyor");
+                self.info(s().reprobing);
             }
             KeyCode::Char('i') => self.import(),
+            KeyCode::Char('l') => {
+                let l = i18n::lang().toggle();
+                i18n::set(l);
+                self.store.lang = Some(l.code().to_string());
+                self.save();
+                self.info(s().lang_switched);
+            }
             KeyCode::Char('?') => self.mode = Mode::Help,
             _ => {}
         }
@@ -272,14 +281,14 @@ impl App {
         let before = self.store.hosts.len();
         let added = import::merge(&mut self.store, found);
         if added.is_empty() {
-            self.info("Yeni bağlantı bulunamadı (Belgeler, Masaüstü, ~/.ssh/config)");
+            self.info(s().import_none);
             return;
         }
         self.save();
         for i in before..self.store.hosts.len() {
             self.probe_host(i);
         }
-        self.info(format!("{} bağlantı içe aktarıldı: {}", added.len(), added.join(", ")));
+        self.info(tf!(s().imported_n, added.len(), added.join(", ")));
     }
 
     fn key_filter(&mut self, k: KeyEvent) -> Mode {
@@ -329,7 +338,7 @@ impl App {
             let h = self.store.hosts.remove(i);
             self.save();
             self.clamp();
-            self.info(format!("{} silindi", h.name));
+            self.info(tf!(s().deleted, h.name));
         }
         Mode::Normal
     }
@@ -386,7 +395,7 @@ impl App {
         self.status.remove(&self.store.hosts[idx].probe_key());
         self.probe_host(idx);
         self.select_index(idx);
-        self.info(format!("{name} kaydedildi"));
+        self.info(tf!(s().saved, name));
         Mode::Normal
     }
 }
@@ -395,12 +404,12 @@ pub struct Field {
     pub label: &'static str,
     pub hint: &'static str,
     pub value: String,
-    /// karakter cinsinden
+    /// in chars, not bytes
     pub cursor: usize,
 }
 
 impl Field {
-    fn new(label: &'static str, hint: &'static str, value: String) -> Field {
+    fn new((label, hint): (&'static str, &'static str), value: String) -> Field {
         let cursor = value.chars().count();
         Field { label, hint, value, cursor }
     }
@@ -459,18 +468,19 @@ pub struct Form {
 
 impl Form {
     pub fn new(title: &str, editing: Option<usize>, h: &Host) -> Form {
+        let t = s();
         let fields = vec![
-            Field::new("Ad", "listede görünen kısa ad", h.name.clone()),
-            Field::new("Sunucu", "IP ya da alan adı", h.host.clone()),
-            Field::new("Kullanıcı", "ubuntu, root…", h.user.clone()),
-            Field::new("Port", "22", if h.port == 22 { String::new() } else { h.port.to_string() }),
-            Field::new("Anahtar", r"C:\yol\anahtar.pem (boşsa ssh varsayılanı)", h.key.clone()),
-            Field::new("Grup", "Oracle, AWS, Ev…", h.group.clone()),
-            Field::new("Atlama", "kullanıcı@bastion (ProxyJump)", h.jump.clone()),
-            Field::new("tmux", "oturum adı, ör. main (sunucuda tmux kurulu olmalı)", h.tmux.clone()),
-            Field::new("Yönlendirme", "L 8080:localhost:80, D 1080", h.forwards.join(", ")),
-            Field::new("Ek argüman", "-A -o Compression=yes", h.extra.clone()),
-            Field::new("Not", "", h.notes.clone()),
+            Field::new(t.f_name, h.name.clone()),
+            Field::new(t.f_host, h.host.clone()),
+            Field::new(t.f_user, h.user.clone()),
+            Field::new(t.f_port, if h.port == 22 { String::new() } else { h.port.to_string() }),
+            Field::new(t.f_key, h.key.clone()),
+            Field::new(t.f_group, h.group.clone()),
+            Field::new(t.f_jump, h.jump.clone()),
+            Field::new(t.f_tmux, h.tmux.clone()),
+            Field::new(t.f_fwd, h.forwards.join(", ")),
+            Field::new(t.f_extra, h.extra.clone()),
+            Field::new(t.f_notes, h.notes.clone()),
         ];
         Form { title: title.to_string(), editing, fields, focus: 0, error: None }
     }
@@ -492,23 +502,24 @@ impl Form {
     }
 
     fn to_host(&self, base: &Host, store: &Store) -> Result<Host, String> {
+        let t = s();
         let name = self.v(F_NAME);
         if name.is_empty() {
-            return Err("Ad boş olamaz".into());
+            return Err(t.e_name_empty.into());
         }
         if name.starts_with('-') || name.contains([';', '"', '\'']) {
-            return Err("Ad '-' ile başlayamaz, ; \" ' içeremez".into());
+            return Err(t.e_name_chars.into());
         }
         if store.name_taken(&name, self.editing) {
-            return Err(format!("'{name}' adı zaten var"));
+            return Err(tf!(t.e_name_taken, name));
         }
         let host = self.v(F_HOST);
         if host.is_empty() || host.contains(char::is_whitespace) {
-            return Err("Sunucu boş olamaz, boşluk içeremez".into());
+            return Err(t.e_host.into());
         }
         let user = self.v(F_USER);
         if user.contains(char::is_whitespace) {
-            return Err("Kullanıcı adı boşluk içeremez".into());
+            return Err(t.e_user.into());
         }
         let port_s = self.v(F_PORT);
         let port: u16 = if port_s.is_empty() {
@@ -516,16 +527,16 @@ impl Form {
         } else {
             match port_s.parse::<u16>() {
                 Ok(p) if p > 0 => p,
-                _ => return Err("Port 1-65535 arası bir sayı olmalı".into()),
+                _ => return Err(t.e_port.into()),
             }
         };
         let key = self.v(F_KEY).trim_matches('"').to_string();
         if !key.is_empty() && !Path::new(&ssh::expand_tilde(&key)).exists() {
-            return Err(format!("Anahtar dosyası bulunamadı: {key}"));
+            return Err(tf!(t.e_key, key));
         }
         let tmux = self.v(F_TMUX);
         if !tmux.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) {
-            return Err("tmux oturum adı yalnız harf, rakam, - _ . içerebilir".into());
+            return Err(t.e_tmux.into());
         }
         let forwards: Vec<String> = self
             .v(F_FWD)
@@ -575,8 +586,8 @@ mod tests {
     fn add_filter_edit_delete() {
         let mut a = app();
         key(&mut a, KeyCode::Char('a'));
-        key(&mut a, KeyCode::Enter); // boş ad
-        // Enter ilk alanda sonraki alana geçer; Ctrl+S ile kaydet → hata
+        key(&mut a, KeyCode::Enter); // empty name
+        // Enter moves to the next field; Ctrl+S with an empty name → error
         a.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
         match &a.mode {
             Mode::Form(f) => assert!(f.error.is_some()),
@@ -595,18 +606,18 @@ mod tests {
         assert_eq!(a.store.hosts[0].target(), "root@10.0.0.5");
         assert_eq!(a.store.hosts[0].port, 2222);
 
-        // ikinci kayıt + filtre
+        // second entry + filter
         key(&mut a, KeyCode::Char('y'));
         a.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
-        assert_eq!(a.store.hosts[1].name, "web-kopya");
+        assert_eq!(a.store.hosts[1].name, format!("web-{}", s().copy_suffix));
         key(&mut a, KeyCode::Char('/'));
-        typ(&mut a, "kopya");
+        typ(&mut a, s().copy_suffix);
         assert_eq!(a.visible().len(), 1);
         key(&mut a, KeyCode::Esc);
         assert_eq!(a.visible().len(), 2);
 
-        // düzenle: aynı ada çevirmek reddedilir
-        a.selected = a.visible().iter().position(|&i| a.store.hosts[i].name == "web-kopya").unwrap();
+        // edit: renaming to an existing name is rejected
+        a.selected = a.visible().iter().position(|&i| a.store.hosts[i].name != "web").unwrap();
         key(&mut a, KeyCode::Char('e'));
         a.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
         typ(&mut a, "WEB");
@@ -614,7 +625,7 @@ mod tests {
         assert!(matches!(&a.mode, Mode::Form(f) if f.error.is_some()));
         key(&mut a, KeyCode::Esc);
 
-        // sil
+        // delete
         key(&mut a, KeyCode::Char('d'));
         key(&mut a, KeyCode::Char('n'));
         assert_eq!(a.store.hosts.len(), 2);

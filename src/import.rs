@@ -1,10 +1,12 @@
-//! .bat dosyalarından ve ~/.ssh/config'ten bağlantı içe aktarma.
+//! Importing connections from .bat files and ~/.ssh/config.
 
+use crate::i18n::s;
 use crate::model::{Host, Store};
+use crate::tf;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Kabuk benzeri bölme: tırnak içindeki boşluklar korunur.
+/// Shell-like split: whitespace inside quotes is kept.
 pub fn tokenize(s: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut cur = String::new();
@@ -38,14 +40,14 @@ pub fn tokenize(s: &str) -> Vec<String> {
     out
 }
 
-/// ssh'ın değer alan seçenekleri.
+/// ssh options that take a value.
 const VALUE_FLAGS: &str = "BbcDEeFIiJLlmOoPpQRSWw";
 
 fn home() -> PathBuf {
     dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
 }
 
-/// .bat içindeki göreli yolu, %~dp0 ve %USERPROFILE% dahil, mutlak yola çevirir.
+/// Turns a path from a .bat file (incl. %~dp0 and %USERPROFILE%) into an absolute path.
 fn resolve_path(val: &str, base: &Path) -> String {
     let mut v = val.to_string();
     let base_s = base.display().to_string();
@@ -91,7 +93,7 @@ fn quote_arg(s: &str) -> String {
     }
 }
 
-/// `ssh ...` komutunu çözümler. İlk kelime ssh değilse `None`.
+/// Parses an `ssh ...` command. `None` if the first word is not ssh.
 pub fn parse_ssh_command(tokens: &[String], base: &Path) -> Option<Host> {
     let prog = Path::new(tokens.first()?)
         .file_stem()?
@@ -147,7 +149,7 @@ pub fn parse_ssh_command(tokens: &[String], base: &Path) -> Option<Host> {
         }
         None => dest,
     };
-    // ssh://host:port biçimi
+    // ssh://host:port form
     match rest.rsplit_once(':') {
         Some((host, port)) if !host.contains(':') && port.parse::<u16>().is_ok() => {
             h.host = host.to_string();
@@ -208,7 +210,7 @@ pub fn parse_bat(path: &Path) -> Option<Host> {
         if let Some(mut h) = parse_ssh_command(&tokenize(l), base) {
             h.name = name_from_stem(&stem);
             h.group = guess_group(&h);
-            h.notes = format!("{} dosyasından alındı", path.file_name()?.to_string_lossy());
+            h.notes = tf!(s().imported_from, path.file_name()?.to_string_lossy());
             return Some(h);
         }
     }
@@ -238,7 +240,7 @@ pub fn parse_ssh_config(text: &str) -> Vec<Host> {
                     cur.push(Host {
                         name: alias.to_string(),
                         host: alias.to_string(),
-                        notes: "~/.ssh/config dosyasından alındı".into(),
+                        notes: tf!(s().imported_from, "~/.ssh/config"),
                         ..Host::default()
                     });
                 }
@@ -266,7 +268,7 @@ pub fn parse_ssh_config(text: &str) -> Vec<Host> {
     out
 }
 
-/// Belgeler ve Masaüstü'ndeki .bat/.cmd dosyalarıyla ~/.ssh/config'i tarar.
+/// Scans .bat/.cmd files in Documents and Desktop, plus ~/.ssh/config.
 pub fn discover() -> Vec<Host> {
     let mut found = Vec::new();
     let dirs_to_scan: Vec<PathBuf> = [dirs::document_dir(), dirs::desktop_dir()]
@@ -292,7 +294,7 @@ pub fn discover() -> Vec<Host> {
     found
 }
 
-/// Yeni uç noktaları ekler, eklenenlerin adlarını döner.
+/// Adds new endpoints and returns the names that were added.
 pub fn merge(store: &mut Store, found: Vec<Host>) -> Vec<String> {
     let mut added = Vec::new();
     for mut h in found {

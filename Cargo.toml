@@ -2,7 +2,7 @@
 name = "sshm"
 version = "0.1.0"
 edition = "2024"
-description = "Terminal SSH bağlantı yöneticisi (ratatui + sistem OpenSSH)"
+description = "Terminal SSH connection manager (ratatui + system OpenSSH), English / Turkish"
 license = "MIT"
 repository = "https://github.com/iphysicc/sshm"
 readme = "README.md"

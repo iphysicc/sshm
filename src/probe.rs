@@ -1,6 +1,6 @@
-//! Sunucuya TCP bağlantısı açıp SSH karşılama satırını okuyan erişim denetimi.
-//! Kimlik doğrulama yapmaz. Yalnız açılışta ve `r` ile çalışır: sık tekrarlanan
-//! doğrulamasız bağlantılar fail2ban / OpenSSH PerSourcePenalties'e takılabilir.
+//! Reachability check: opens a TCP connection and reads the SSH banner.
+//! No authentication. Runs only at startup and on `r`: frequent unauthenticated
+//! connections can trip fail2ban or OpenSSH PerSourcePenalties.
 
 use std::io::Read;
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
@@ -12,9 +12,30 @@ use std::time::{Duration, Instant};
 pub enum Status {
     Checking,
     Up { ms: u128, banner: Option<String> },
-    Down(String),
-    /// Atlama sunucusu üzerinden bağlanılıyor, doğrudan denetlenemez.
+    Down(Reason),
+    /// Reached through a jump host, so it can't be probed directly.
     Skipped,
+}
+
+/// Translated when drawn, so switching language updates it too.
+#[derive(Clone, Copy, Debug)]
+pub enum Reason {
+    Dns,
+    Timeout,
+    Refused,
+    Unreachable,
+}
+
+impl Reason {
+    pub fn text(self) -> &'static str {
+        let t = crate::i18n::s();
+        match self {
+            Reason::Dns => t.dns_failed,
+            Reason::Timeout => t.timed_out,
+            Reason::Refused => t.refused,
+            Reason::Unreachable => t.unreachable,
+        }
+    }
 }
 
 pub fn spawn(key: String, host: String, port: u16, tx: Sender<(String, Status)>) {
@@ -27,9 +48,9 @@ pub fn spawn(key: String, host: String, port: u16, tx: Sender<(String, Status)>)
 fn probe(host: &str, port: u16) -> Status {
     let addrs: Vec<SocketAddr> = match (host, port).to_socket_addrs() {
         Ok(a) => a.collect(),
-        Err(_) => return Status::Down("ad çözümlenemedi".into()),
+        Err(_) => return Status::Down(Reason::Dns),
     };
-    let mut last = "ulaşılamıyor";
+    let mut last = Reason::Unreachable;
     for addr in addrs {
         let t0 = Instant::now();
         match TcpStream::connect_timeout(&addr, Duration::from_secs(3)) {
@@ -48,12 +69,12 @@ fn probe(host: &str, port: u16) -> Status {
             }
             Err(e) => {
                 last = match e.kind() {
-                    std::io::ErrorKind::TimedOut => "zaman aşımı",
-                    std::io::ErrorKind::ConnectionRefused => "bağlantı reddedildi",
-                    _ => "ulaşılamıyor",
+                    std::io::ErrorKind::TimedOut => Reason::Timeout,
+                    std::io::ErrorKind::ConnectionRefused => Reason::Refused,
+                    _ => Reason::Unreachable,
                 }
             }
         }
     }
-    Status::Down(last.into())
+    Status::Down(last)
 }

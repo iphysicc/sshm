@@ -1,65 +1,74 @@
+<p align="right"><b>English</b> · <a href="README.tr.md">Türkçe</a></p>
+
 # sshm
 
-Terminalde çalışan SSH bağlantı yöneticisi. Sistemdeki OpenSSH'ı çağırır; anahtarlar,
-`known_hosts`, 2FA ve `~/.ssh/config` olduğu gibi çalışır.
+A terminal SSH connection manager. It runs your system OpenSSH, so keys, `known_hosts`,
+2FA prompts and `~/.ssh/config` work exactly as they do today.
 
-## Kurulum
+## Install
 
-Rust ve OpenSSH istemcisi gerekir (Windows 10/11'de OpenSSH hazır gelir).
+Requires Rust and an OpenSSH client (built into Windows 10/11).
 
 ```powershell
 cargo install --git https://github.com/iphysicc/sshm
 ```
 
-ya da repoyu klonlayıp içinde `cargo install --path .`
+Or clone the repo and run `cargo install --path .` inside it.
 
-`sshm` artık her terminalde çalışır. İlk açılışta Belgeler ve Masaüstü'ndeki ssh içeren
-`.bat`/`.cmd` dosyaları ile `~/.ssh/config` otomatik içe aktarılır.
+`sshm` is then available in any terminal. On first launch it imports `.bat`/`.cmd` files
+that contain an `ssh` command from Documents and Desktop, plus `~/.ssh/config`.
 
-## Kullanım
+## Usage
 
 ```
-sshm              arayüz
-sshm web          doğrudan bağlan (önek de olur: sshm we)
-sshm --list       liste
-sshm --import     yeniden içe aktar (aynı uç noktalar atlanır)
-sshm --config     kayıt dosyasının yolu
+sshm               open the interface
+sshm web           connect directly (a prefix works too: sshm we)
+sshm --list        list connections
+sshm --import      import again (existing endpoints are skipped)
+sshm --lang en|tr  set the interface language
+sshm --config      print the path of the connections file
 ```
 
-| Tuş | İş |
+| Key | Action |
 | --- | --- |
-| ⏎ | Bu terminalde bağlan; oturum bitince listeye dönülür |
-| t | Windows Terminal'de yeni sekmede bağlan |
+| ⏎ | Connect in this terminal; you return to the list when the session ends |
+| t | Connect in a new Windows Terminal tab |
 | f | sftp |
-| c | ssh komutunu panoya kopyala |
-| / | ara; tek sonuç kalınca ⏎ bağlanır |
-| a / e / y / d | ekle / düzenle / kopyala / sil |
-| r | sunucuları yeniden denetle |
-| i | içe aktar |
-| ? | tüm kısayollar |
+| c | Copy the ssh command to the clipboard |
+| / | Search; ⏎ connects when a single match is left |
+| a / e / y / d | Add / edit / duplicate / delete |
+| r | Check servers again |
+| i | Import |
+| l | Switch language (English / Türkçe) |
+| ? | All shortcuts |
 
-## Sunucuda kalıcı oturum
+## Language
 
-Bir bağlantıda **tmux** alanına bir ad yazarsan (ör. `main`) bağlanınca
-`tmux new -A -s main` çalışır: bağlantı koparsa ya da kapatırsan oturum sunucuda yaşamaya
-devam eder, tekrar bağlanınca kaldığın yere dönersin. Sunucuda `tmux` kurulu olmalı
-(`sudo apt install tmux`).
+The interface is available in English and Turkish. English is the default.
+Press `l` in the interface or run `sshm --lang tr` to switch; the choice is saved.
+`SSHM_LANG=tr` overrides it for a single run.
 
-Bağlantılara varsayılan olarak `ServerAliveInterval=30` eklenir; boşta kalan oturumlar
-düşmez.
+## Persistent sessions on the server
 
-## Durum denetimi
+Put a name in the **tmux** field of a connection (e.g. `main`) and connecting runs
+`tmux new -A -s main`. If the connection drops or you close it, the session keeps running
+on the server, and reconnecting brings you back to where you were. The server needs
+`tmux` installed (`sudo apt install tmux`).
 
-Açılışta ve `r` ile her sunucuya bir TCP bağlantısı açılır, SSH karşılama satırı okunur
-(gecikme + sunucu sürümü). Kimlik doğrulama yapılmaz. Bilerek periyodik değildir: sık
-tekrarlanan doğrulamasız bağlantılar fail2ban ya da OpenSSH'ın PerSourcePenalties
-ayarına takılabilir. Atlama sunucusu (ProxyJump) kullanan kayıtlar denetlenmez.
+Every connection gets `ServerAliveInterval=30` by default, so idle sessions don't drop.
 
-## Kayıtlar
+## Status checks
 
-`%APPDATA%\sshm\hosts.toml` (TOML, elle düzenlenebilir). `SSHM_CONFIG` ortam değişkeni
-ile başka bir dosya gösterilebilir.
+At startup and on `r`, sshm opens one TCP connection to each server and reads the SSH
+banner (latency + server version). It does not authenticate. This is intentionally not
+periodic: frequent unauthenticated connections can trip fail2ban or OpenSSH's
+PerSourcePenalties. Connections that use a jump host (ProxyJump) are not checked.
 
-## Lisans
+## Storage
+
+`%APPDATA%\sshm\hosts.toml` on Windows (TOML, safe to edit by hand while sshm is not
+running). Point `SSHM_CONFIG` at another file to use that instead.
+
+## License
 
 MIT

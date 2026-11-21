@@ -1,12 +1,13 @@
-//! ssh/sftp komutlarını kurar ve dış süreçleri başlatır.
+//! Builds ssh/sftp commands and launches external processes.
 
+use crate::i18n::s;
 use crate::import::tokenize;
 use crate::model::Host;
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-/// Windows'ta sistemin OpenSSH'ı (PATH'te Git'in ssh'ı önde olsa bile).
+/// On Windows, the system OpenSSH (even if Git's ssh comes first on PATH).
 fn system_bin(name: &str) -> PathBuf {
     #[cfg(windows)]
     {
@@ -84,7 +85,7 @@ fn base_args(h: &Host, keepalive: bool) -> Vec<String> {
             a.push(spec);
         }
     }
-    // Kullanıcının -o ayarları önce gelir; ssh ilk değeri kullanır.
+    // User -o options go first; ssh uses the first value it sees.
     a.extend(tokenize(&h.extra));
     if keepalive {
         a.extend(KEEPALIVE.iter().map(|s| s.to_string()));
@@ -131,7 +132,7 @@ fn quote(s: &str) -> String {
     }
 }
 
-/// Ekranda gösterilen / kopyalanan komut. `full` keep-alive seçeneklerini de ekler.
+/// The command shown on screen / copied. `full` also adds the keep-alive options.
 pub fn command_line(h: &Host, full: bool) -> String {
     let mut a = base_args(h, full);
     if !h.tmux.is_empty() {
@@ -149,9 +150,9 @@ pub fn command_line(h: &Host, full: bool) -> String {
     out
 }
 
-/// Windows Terminal'de yeni sekme açar; sekmede `sshm <ad>` çalışır.
+/// Opens a new Windows Terminal tab running `sshm <name>`.
 pub fn open_tab(h: &Host) -> Result<()> {
-    let exe = std::env::current_exe().context("sshm yolu bulunamadı")?;
+    let exe = std::env::current_exe().context(s().exe_not_found)?;
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -166,7 +167,7 @@ pub fn open_tab(h: &Host) -> Result<()> {
         if wt.is_ok() {
             return Ok(());
         }
-        // Windows Terminal yoksa yeni konsol penceresi.
+        // No Windows Terminal: fall back to a new console window.
         Command::new("cmd")
             .args(["/c", "start"])
             .raw_arg(format!("\"{}\"", h.name))
@@ -176,19 +177,19 @@ pub fn open_tab(h: &Host) -> Result<()> {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
-            .context("yeni pencere açılamadı")?;
+            .context(s().window_failed)?;
         Ok(())
     }
     #[cfg(not(windows))]
     {
         let _ = (exe, Stdio::null());
-        anyhow::bail!("yeni sekme yalnız Windows Terminal'de destekleniyor")
+        anyhow::bail!(s().tab_unsupported)
     }
 }
 
 pub fn copy_to_clipboard(text: &str) -> Result<()> {
-    let mut cb = arboard::Clipboard::new().context("pano açılamadı")?;
-    cb.set_text(text.to_string()).context("panoya yazılamadı")?;
+    let mut cb = arboard::Clipboard::new().context(s().clipboard_open)?;
+    cb.set_text(text.to_string()).context(s().clipboard_write)?;
     Ok(())
 }
 
